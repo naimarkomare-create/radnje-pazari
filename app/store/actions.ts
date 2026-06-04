@@ -81,7 +81,8 @@ export async function submitDailyRevenue(
       return { ok: false, message: error.message };
     }
 
-    revalidatePath("/store");
+    revalidatePath("/store/pazari");
+    revalidatePath("/store/moji-unosi");
     return successState;
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "Greška pri slanju." };
@@ -109,7 +110,8 @@ export async function submitTemperature(
       return { ok: false, message: error.message };
     }
 
-    revalidatePath("/store");
+    revalidatePath("/store/temperature");
+    revalidatePath("/store/moji-unosi");
     return successState;
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "Greška pri slanju." };
@@ -138,7 +140,8 @@ export async function submitProduceRequest(
       return { ok: false, message: error.message };
     }
 
-    revalidatePath("/store");
+    revalidatePath("/store/trebovanja");
+    revalidatePath("/store/moji-unosi");
     return successState;
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "Greška pri slanju." };
