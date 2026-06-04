@@ -33,7 +33,7 @@ export default async function StoreDashboardPage() {
   const [daily, temperatures, produce] = await Promise.all([
     supabase.from("daily_revenue_reports").select("id", { count: "exact", head: true }),
     supabase.from("temperature_reports").select("id", { count: "exact", head: true }),
-    supabase.from("produce_requests").select("id", { count: "exact", head: true })
+    supabase.from("produce_request_batches").select("id", { count: "exact", head: true })
   ]);
 
   return (

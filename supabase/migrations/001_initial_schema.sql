@@ -70,7 +70,7 @@ values
   ('Radnja 7'),
   ('Radnja 8'),
   ('Radnja 9'),
-  ('Radnja 10')
+  ('Radnja 11')
 on conflict (name) do nothing;
 
 create or replace function public.current_user_role()

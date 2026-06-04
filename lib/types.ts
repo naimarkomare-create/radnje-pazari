@@ -54,6 +54,35 @@ export type ProduceRequest = {
   stores?: Pick<Store, "name"> | null;
 };
 
+export type ProduceItem = {
+  id: string;
+  name: string;
+  unit: string;
+  sort_order: number;
+  active: boolean;
+  created_at: string;
+};
+
+export type ProduceRequestItem = {
+  id: string;
+  batch_id: string;
+  produce_item_id: string;
+  quantity: number;
+  created_at: string;
+  produce_items?: Pick<ProduceItem, "id" | "name" | "unit" | "sort_order"> | null;
+};
+
+export type ProduceRequestBatch = {
+  id: string;
+  store_id: string;
+  user_id: string;
+  request_date: string;
+  note: string | null;
+  created_at: string;
+  stores?: Pick<Store, "id" | "name"> | null;
+  produce_request_items?: ProduceRequestItem[];
+};
+
 export type ActionState = {
   ok: boolean;
   message: string;

@@ -35,7 +35,21 @@ Migracija pravi tabele, RLS funkcije, RLS politike i seed podatke za:
 - Radnja 7
 - Radnja 8
 - Radnja 9
-- Radnja 10
+- Radnja 11
+
+Za strukturisana trebovanja voća i povrća zatim pokrenite ceo sadržaj fajla:
+
+```text
+supabase/migrations/002_structured_produce_requests.sql
+```
+
+Ova migracija:
+
+- čuva postojeću `produce_requests` tabelu i stare podatke
+- dodaje katalog artikala i batch/item strukturu trebovanja
+- dodaje stroge RLS politike za nove tabele
+- dodaje funkciju za transakciono slanje jednog trebovanja
+- menja postojeći naziv `Radnja 10` u `Radnja 11`
 
 ## 3. Kreiranje 10 store korisnika
 
@@ -89,7 +103,7 @@ values
   ('AUTH_USER_ID_RADNJA_7', 'radnja7@firma.local', 'store', 'STORE_ID_RADNJA_7'),
   ('AUTH_USER_ID_RADNJA_8', 'radnja8@firma.local', 'store', 'STORE_ID_RADNJA_8'),
   ('AUTH_USER_ID_RADNJA_9', 'radnja9@firma.local', 'store', 'STORE_ID_RADNJA_9'),
-  ('AUTH_USER_ID_RADNJA_11', 'radnja11@firma.local', 'store', 'STORE_ID_RADNJA_10');
+  ('AUTH_USER_ID_RADNJA_11', 'radnja11@firma.local', 'store', 'STORE_ID_RADNJA_11');
 ```
 
 ## 6. Podešavanje admin korisnika

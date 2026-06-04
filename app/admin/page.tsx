@@ -20,7 +20,7 @@ export default async function AdminDashboardPage() {
   const [daily, temperatures, produce, stores, submittedToday] = await Promise.all([
     supabase.from("daily_revenue_reports").select("id", { count: "exact", head: true }),
     supabase.from("temperature_reports").select("id", { count: "exact", head: true }),
-    supabase.from("produce_requests").select("id", { count: "exact", head: true }),
+    supabase.from("produce_request_batches").select("id", { count: "exact", head: true }),
     supabase.from("stores").select("id", { count: "exact", head: true }),
     supabase.from("daily_revenue_reports").select("store_id").eq("report_date", today)
   ]);

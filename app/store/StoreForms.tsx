@@ -1,7 +1,7 @@
 "use client";
 
 import { useFormState, useFormStatus } from "react-dom";
-import { submitDailyRevenue, submitProduceRequest, submitTemperature } from "@/app/store/actions";
+import { submitDailyRevenue, submitTemperature } from "@/app/store/actions";
 import type { ActionState } from "@/lib/types";
 
 const initialState: ActionState = { ok: false, message: "" };
@@ -48,34 +48,6 @@ export function TemperatureForm({ storeName, today }: { storeName: string; today
         <input className="input" name="device_name" required />
       </label>
       <NumberField label="Temperatura" name="temperature" required step="0.1" />
-      <NoteField />
-      <FormMessage state={state} />
-      <SubmitButton />
-    </form>
-  );
-}
-
-export function ProduceRequestForm({ storeName, today }: { storeName: string; today: string }) {
-  const [state, action] = useFormState(submitProduceRequest, initialState);
-
-  return (
-    <form action={action} className={formClass}>
-      <ReadOnlyStore storeName={storeName} />
-      <label className="field">
-        <span className="label">Datum</span>
-        <input className="input" defaultValue={today} name="request_date" required type="date" />
-      </label>
-      <label className="field">
-        <span className="label">Naziv artikla</span>
-        <input className="input" name="item_name" required />
-      </label>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <NumberField label="Količina" name="quantity" />
-        <label className="field">
-          <span className="label">Jedinica mere</span>
-          <input className="input" name="unit" placeholder="kg, gajba, kom" />
-        </label>
-      </div>
       <NoteField />
       <FormMessage state={state} />
       <SubmitButton />

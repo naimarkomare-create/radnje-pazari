@@ -123,17 +123,37 @@ export async function submitProduceRequest(
   formData: FormData
 ): Promise<ActionState> {
   try {
-    const profile = await requireStore();
+    await requireStore();
     const supabase = createClient();
+    const rawItems = getRequiredText(formData, "items", "Artikli");
+    const parsedItems: unknown = JSON.parse(rawItems);
 
-    const { error } = await supabase.from("produce_requests").insert({
-      store_id: profile.store_id,
-      user_id: profile.id,
-      request_date: getRequiredText(formData, "request_date", "Datum"),
-      item_name: getRequiredText(formData, "item_name", "Naziv artikla"),
-      quantity: getOptionalNumber(formData, "quantity", "Količina"),
-      unit: getOptionalText(formData, "unit"),
-      note: getOptionalText(formData, "note")
+    if (!Array.isArray(parsedItems)) {
+      throw new Error("Artikli nisu ispravno poslati.");
+    }
+
+    const items = parsedItems
+      .map((item) => {
+        if (!item || typeof item !== "object") return null;
+        const produceItemId = "produce_item_id" in item ? String(item.produce_item_id) : "";
+        const quantity = "quantity" in item ? Number(item.quantity) : 0;
+
+        if (!/^[0-9a-f-]{36}$/i.test(produceItemId) || !Number.isFinite(quantity) || quantity <= 0) {
+          return null;
+        }
+
+        return { produce_item_id: produceItemId, quantity };
+      })
+      .filter((item): item is { produce_item_id: string; quantity: number } => item !== null);
+
+    if (items.length === 0) {
+      return { ok: false, message: "Unesite količinu za najmanje jedan artikal." };
+    }
+
+    const { error } = await supabase.rpc("submit_produce_request", {
+      p_request_date: getRequiredText(formData, "request_date", "Datum"),
+      p_note: getText(formData, "note"),
+      p_items: items
     });
 
     if (error) {
@@ -142,7 +162,8 @@ export async function submitProduceRequest(
 
     revalidatePath("/store/trebovanja");
     revalidatePath("/store/moji-unosi");
-    return successState;
+    revalidatePath("/admin/trebovanja");
+    return { ok: true, message: "Uspešno poslato trebovanje" };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "Greška pri slanju." };
   }

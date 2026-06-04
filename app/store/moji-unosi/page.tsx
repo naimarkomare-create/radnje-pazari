@@ -1,8 +1,9 @@
 import { PageHeader } from "@/components/PageHeader";
-import { DailyReportsList, ProduceRequestsList, TemperatureReportsList } from "@/components/ReportLists";
+import { ProduceBatchList } from "@/components/ProduceBatchList";
+import { DailyReportsList, TemperatureReportsList } from "@/components/ReportLists";
 import { requireStore } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import type { DailyRevenueReport, ProduceRequest, TemperatureReport } from "@/lib/types";
+import type { DailyRevenueReport, ProduceRequestBatch, TemperatureReport } from "@/lib/types";
 
 export default async function StoreEntriesPage() {
   const profile = await requireStore();
@@ -19,8 +20,10 @@ export default async function StoreEntriesPage() {
       .order("created_at", { ascending: false })
       .limit(10),
     supabase
-      .from("produce_requests")
-      .select("id, store_id, user_id, request_date, item_name, quantity, unit, note, created_at")
+      .from("produce_request_batches")
+      .select(
+        "id, store_id, user_id, request_date, note, created_at, produce_request_items(id, batch_id, produce_item_id, quantity, created_at, produce_items(id, name, unit, sort_order))"
+      )
       .order("created_at", { ascending: false })
       .limit(10)
   ]);
@@ -31,7 +34,11 @@ export default async function StoreEntriesPage() {
       <div className="page-content grid items-start gap-5 xl:grid-cols-3">
         <DailyReportsList reports={(daily.data ?? []) as DailyRevenueReport[]} error={daily.error?.message} />
         <TemperatureReportsList reports={(temperatures.data ?? []) as TemperatureReport[]} error={temperatures.error?.message} />
-        <ProduceRequestsList requests={(produce.data ?? []) as ProduceRequest[]} error={produce.error?.message} />
+        <ProduceBatchList
+          batches={(produce.data ?? []) as unknown as ProduceRequestBatch[]}
+          error={produce.error?.message}
+          title="Trebovanja"
+        />
       </div>
     </>
   );

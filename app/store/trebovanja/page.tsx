@@ -1,25 +1,38 @@
-import { ProduceRequestForm } from "@/app/store/StoreForms";
+import { ProduceOrderForm } from "@/app/store/trebovanja/ProduceOrderForm";
 import { PageHeader } from "@/components/PageHeader";
-import { ProduceRequestsList } from "@/components/ReportLists";
+import { ProduceBatchList } from "@/components/ProduceBatchList";
 import { requireStore } from "@/lib/auth";
 import { todayInBelgrade } from "@/lib/date";
 import { createClient } from "@/lib/supabase/server";
-import type { ProduceRequest } from "@/lib/types";
+import type { ProduceItem, ProduceRequestBatch } from "@/lib/types";
 
 export default async function StoreProduceRequestsPage() {
   const profile = await requireStore();
-  const result = await createClient()
-    .from("produce_requests")
-    .select("id, store_id, user_id, request_date, item_name, quantity, unit, note, created_at")
-    .order("created_at", { ascending: false })
-    .limit(30);
+  const supabase = createClient();
+  const [itemsResult, batchesResult] = await Promise.all([
+    supabase
+      .from("produce_items")
+      .select("id, name, unit, sort_order, active, created_at")
+      .eq("active", true)
+      .order("sort_order"),
+    supabase
+      .from("produce_request_batches")
+      .select(
+        "id, store_id, user_id, request_date, note, created_at, produce_request_items(id, batch_id, produce_item_id, quantity, created_at, produce_items(id, name, unit, sort_order))"
+      )
+      .order("created_at", { ascending: false })
+      .limit(10)
+  ]);
 
   return (
     <>
-      <PageHeader eyebrow={profile.stores?.name ?? "Radnja"} title="Trebovanja" />
-      <div className="page-content grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.8fr)]">
-        <ProduceRequestForm storeName={profile.stores?.name ?? "Radnja"} today={todayInBelgrade()} />
-        <ProduceRequestsList requests={(result.data ?? []) as ProduceRequest[]} error={result.error?.message} />
+      <PageHeader eyebrow={profile.stores?.name ?? "Radnja"} title="Trebovanje voća i povrća" />
+      <div className="page-content">
+        <ProduceOrderForm items={(itemsResult.data ?? []) as ProduceItem[]} today={todayInBelgrade()} />
+        <ProduceBatchList
+          batches={(batchesResult.data ?? []) as unknown as ProduceRequestBatch[]}
+          error={itemsResult.error?.message ?? batchesResult.error?.message}
+        />
       </div>
     </>
   );
