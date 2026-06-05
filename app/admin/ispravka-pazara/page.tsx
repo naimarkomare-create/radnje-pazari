@@ -1,11 +1,11 @@
+import { RevenueCorrectionTable } from "@/app/admin/ispravka-pazara/RevenueCorrectionTable";
 import { AdminFilters } from "@/components/AdminFilters";
-import { DailyRevenueTable } from "@/components/AdminTables";
 import { PageHeader } from "@/components/PageHeader";
 import { requireAdmin } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { DailyRevenueReport, Store } from "@/lib/types";
 
-export default async function AdminDailyRevenuePage({
+export default async function AdminRevenueCorrectionPage({
   searchParams
 }: {
   searchParams: { date?: string; store?: string; store_id?: string };
@@ -33,15 +33,15 @@ export default async function AdminDailyRevenuePage({
 
   return (
     <>
-      <PageHeader eyebrow="Admin pregled" title="Pazari" />
+      <PageHeader eyebrow="Admin pregled" title="Ispravka pazara" />
       <div className="page-content">
         <AdminFilters
-          resetHref="/admin/pazari"
+          resetHref="/admin/ispravka-pazara"
           selectedDate={selectedDate}
           selectedStore={selectedStore}
           stores={(storesResult.data ?? []) as Store[]}
         />
-        <DailyRevenueTable
+        <RevenueCorrectionTable
           error={reports.error?.message ?? storesResult.error?.message}
           reports={(reports.data ?? []) as unknown as DailyRevenueReport[]}
         />

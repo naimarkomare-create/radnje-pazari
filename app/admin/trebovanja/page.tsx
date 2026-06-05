@@ -10,12 +10,17 @@ import type { ProduceRequestBatch, Store } from "@/lib/types";
 export default async function AdminProduceRequestsPage({
   searchParams
 }: {
-  searchParams: { date?: string; store?: string };
+  searchParams: { date?: string; store?: string; store_id?: string };
 }) {
   await requireAdmin();
   const supabase = createClient();
   const selectedDate = typeof searchParams.date === "string" && searchParams.date ? searchParams.date : todayInBelgrade();
-  const selectedStore = typeof searchParams.store === "string" ? searchParams.store : "";
+  const selectedStore =
+    typeof searchParams.store_id === "string"
+      ? searchParams.store_id
+      : typeof searchParams.store === "string"
+        ? searchParams.store
+        : "";
   const storesResult = await supabase
     .from("stores")
     .select("id, name, created_at")

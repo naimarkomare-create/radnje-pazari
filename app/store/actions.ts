@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireStore } from "@/lib/auth";
+import { calculateRevenueTotal, REVENUE_FIELDS, type RevenueFieldName } from "@/lib/revenue";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionState } from "@/lib/types";
 
@@ -32,6 +33,22 @@ function getRequiredNumber(formData: FormData, key: string, label: string) {
   return value;
 }
 
+function getNumberOrZero(formData: FormData, key: string, label: string) {
+  const raw = getText(formData, key);
+
+  if (!raw) {
+    return 0;
+  }
+
+  const value = Number(raw);
+
+  if (!Number.isFinite(value)) {
+    throw new Error(`${label} mora biti broj.`);
+  }
+
+  return value;
+}
+
 function getOptionalNumber(formData: FormData, key: string, label: string) {
   const raw = getText(formData, key);
 
@@ -53,6 +70,17 @@ function getOptionalText(formData: FormData, key: string) {
   return value || null;
 }
 
+function getRevenueValues(formData: FormData) {
+  const values = Object.fromEntries(
+    REVENUE_FIELDS.map((field) => [field.name, getNumberOrZero(formData, field.name, field.label)])
+  ) as Record<RevenueFieldName, number>;
+
+  return {
+    ...values,
+    total_revenue: calculateRevenueTotal(values)
+  };
+}
+
 export async function submitDailyRevenue(
   _previousState: ActionState,
   formData: FormData
@@ -62,18 +90,14 @@ export async function submitDailyRevenue(
     const supabase = createClient();
 
     const reportDate = getRequiredText(formData, "report_date", "Datum");
-    const cashRevenue = getRequiredNumber(formData, "cash_revenue", "Gotovina");
-    const cardRevenue = getRequiredNumber(formData, "card_revenue", "Kartica");
-    const totalRevenue = getRequiredNumber(formData, "total_revenue", "Ukupno");
+    const revenueValues = getRevenueValues(formData);
 
     const { error } = await supabase.from("daily_revenue_reports").insert({
       store_id: profile.store_id,
       user_id: profile.id,
       report_date: reportDate,
       shift: getOptionalText(formData, "shift"),
-      cash_revenue: cashRevenue,
-      card_revenue: cardRevenue,
-      total_revenue: totalRevenue,
+      ...revenueValues,
       note: getOptionalText(formData, "note")
     });
 
@@ -86,6 +110,40 @@ export async function submitDailyRevenue(
     return successState;
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "Greška pri slanju." };
+  }
+}
+
+export async function updateStoreDailyRevenue(
+  _previousState: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  try {
+    await requireStore();
+    const reportId = getRequiredText(formData, "id", "Pazar");
+    const supabase = createClient();
+    const revenueValues = getRevenueValues(formData);
+
+    const { error } = await supabase
+      .from("daily_revenue_reports")
+      .update({
+        report_date: getRequiredText(formData, "report_date", "Datum"),
+        shift: getOptionalText(formData, "shift"),
+        ...revenueValues,
+        note: getOptionalText(formData, "note")
+      })
+      .eq("id", reportId);
+
+    if (error) {
+      return { ok: false, message: error.message.includes("Rok za izmenu") ? "Rok za izmenu je istekao. Kontaktirajte admina." : error.message };
+    }
+
+    revalidatePath("/store/pazari");
+    revalidatePath("/store/moji-unosi");
+    revalidatePath("/admin/pazari");
+    revalidatePath("/admin/ispravka-pazara");
+    return { ok: true, message: "Izmene su sačuvane." };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Greška pri čuvanju izmena." };
   }
 }
 

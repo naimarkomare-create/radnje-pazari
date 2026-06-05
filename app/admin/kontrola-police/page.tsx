@@ -1,4 +1,4 @@
-import { AdminFilters } from "@/components/AdminFilters";
+import { ShelfPhotoFilters } from "@/app/admin/kontrola-police/ShelfPhotoFilters";
 import { PageHeader } from "@/components/PageHeader";
 import { formatTime } from "@/components/ShelfPhotoGrid";
 import { requireAdmin } from "@/lib/auth";
@@ -11,12 +11,17 @@ import type { ProduceShelfPhotoCheck, Store } from "@/lib/types";
 export default async function AdminShelfPhotoPage({
   searchParams
 }: {
-  searchParams: { date?: string; store?: string };
+  searchParams: { date?: string; store?: string; store_id?: string };
 }) {
   await requireAdmin();
   const supabase = createClient();
   const selectedDate = typeof searchParams.date === "string" && searchParams.date ? searchParams.date : todayInBelgrade();
-  const selectedStore = typeof searchParams.store === "string" ? searchParams.store : "";
+  const selectedStore =
+    typeof searchParams.store_id === "string"
+      ? searchParams.store_id
+      : typeof searchParams.store === "string"
+        ? searchParams.store
+        : "";
   const storesResult = await supabase
     .from("stores")
     .select("id, name, created_at")
@@ -43,14 +48,9 @@ export default async function AdminShelfPhotoPage({
 
   return (
     <>
-      <PageHeader eyebrow="Admin pregled" title="Kontrola police voća i povrća" />
+      <PageHeader eyebrow="Admin pregled" title="Kontrola voća i povrća" />
       <div className="page-content">
-        <AdminFilters
-          resetHref="/admin/kontrola-police"
-          selectedDate={selectedDate}
-          selectedStore={selectedStore}
-          stores={stores}
-        />
+        <ShelfPhotoFilters selectedDate={selectedDate} selectedStore={selectedStore} stores={stores} />
         {storesResult.error || photosResult.error ? (
           <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
             {storesResult.error?.message ?? photosResult.error?.message}

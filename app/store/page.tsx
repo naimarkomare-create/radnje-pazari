@@ -21,7 +21,7 @@ const actions = [
   },
   {
     href: "/store/kontrola-police",
-    title: "Kontrola police",
+    title: "Kontrola voća i povrća",
     description: "Pošaljite dnevnu sliku police voća i povrća."
   },
   {

@@ -22,7 +22,11 @@ export type DailyRevenueReport = {
   report_date: string;
   shift: string | null;
   cash_revenue: number;
+  check_revenue: number;
   card_revenue: number;
+  bank_transfer_revenue: number;
+  correction_revenue: number;
+  edopuna_revenue: number;
   total_revenue: number;
   note: string | null;
   created_at: string;

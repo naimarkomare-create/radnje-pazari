@@ -16,7 +16,7 @@ export function ShelfPhotoGrid({
       {photos.map((photo) => (
         <article className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm" key={photo.id}>
           {photo.signedUrl ? (
-            <img alt="Kontrola police voća i povrća" className="aspect-[4/3] w-full object-cover" src={photo.signedUrl} />
+            <img alt="Kontrola voća i povrća" className="aspect-[4/3] w-full object-cover" src={photo.signedUrl} />
           ) : (
             <div className="flex aspect-[4/3] items-center justify-center bg-slate-100 text-sm text-slate-500">Slika nije dostupna</div>
           )}

@@ -25,7 +25,7 @@ export default async function StoreShelfPhotoPage() {
 
   return (
     <>
-      <PageHeader eyebrow={profile.stores?.name ?? "Radnja"} title="Kontrola police voća i povrća" />
+      <PageHeader eyebrow={profile.stores?.name ?? "Radnja"} title="Kontrola voća i povrća" />
       <div className="page-content">
         <ShelfPhotoForm storeId={profile.store_id ?? ""} today={todayInBelgrade()} />
         <NotificationPermission />

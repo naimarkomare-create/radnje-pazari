@@ -2,13 +2,29 @@
 
 import { useFormState, useFormStatus } from "react-dom";
 import { submitDailyRevenue, submitTemperature } from "@/app/store/actions";
+import { calculateRevenueTotal, REVENUE_FIELDS, type RevenueFieldName } from "@/lib/revenue";
 import type { ActionState } from "@/lib/types";
+import { useMemo, useState } from "react";
 
 const initialState: ActionState = { ok: false, message: "" };
 const formClass = "space-y-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5";
 
 export function DailyRevenueForm({ storeName, today }: { storeName: string; today: string }) {
   const [state, action] = useFormState(submitDailyRevenue, initialState);
+  const [values, setValues] = useState<Record<RevenueFieldName, number>>({
+    cash_revenue: 0,
+    check_revenue: 0,
+    card_revenue: 0,
+    bank_transfer_revenue: 0,
+    correction_revenue: 0,
+    edopuna_revenue: 0
+  });
+  const total = useMemo(() => calculateRevenueTotal(values), [values]);
+
+  function updateValue(name: RevenueFieldName, value: string) {
+    const nextValue = value ? Number(value) : 0;
+    setValues((current) => ({ ...current, [name]: Number.isFinite(nextValue) ? nextValue : 0 }));
+  }
 
   return (
     <form action={action} className={formClass}>
@@ -21,10 +37,20 @@ export function DailyRevenueForm({ storeName, today }: { storeName: string; toda
         <span className="label">Smena</span>
         <input className="input" name="shift" placeholder="Prva / druga" />
       </label>
-      <div className="grid gap-4 sm:grid-cols-3">
-        <NumberField label="Gotovina" name="cash_revenue" required />
-        <NumberField label="Kartica" name="card_revenue" required />
-        <NumberField label="Ukupno" name="total_revenue" required />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {REVENUE_FIELDS.map((field) => (
+          <NumberField
+            key={field.name}
+            label={field.label}
+            name={field.name}
+            onValueChange={(value) => updateValue(field.name, value)}
+            value={values[field.name]}
+          />
+        ))}
+        <label className="field">
+          <span className="label">Ukupno</span>
+          <input className="input bg-slate-50 font-semibold" name="total_revenue_display" readOnly type="number" value={total} />
+        </label>
       </div>
       <NoteField />
       <FormMessage state={state} />
@@ -90,23 +116,30 @@ function NumberField({
   label,
   name,
   required = false,
-  step = "0.01"
+  step = "0.01",
+  value,
+  onValueChange
 }: {
   label: string;
   name: string;
   required?: boolean;
   step?: string;
+  value?: number;
+  onValueChange?: (value: string) => void;
 }) {
   return (
     <label className="field">
       <span className="label">{label}</span>
       <input
         className="input"
-        min={label === "Temperatura" ? undefined : 0}
+        defaultValue={onValueChange ? undefined : 0}
+        min={label === "Temperatura" || name === "correction_revenue" ? undefined : 0}
         name={name}
+        onChange={onValueChange ? (event) => onValueChange(event.target.value) : undefined}
         required={required}
         step={step}
         type="number"
+        value={onValueChange ? value : undefined}
       />
     </label>
   );

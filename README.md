@@ -65,6 +65,19 @@ Ova migracija:
 - dozvoljava store korisniku upload samo u folder svoje radnje
 - dozvoljava adminima pregled svih slika
 
+Za nova polja pazara i pravila izmene u roku od 20 minuta zatim pokrenite ceo sadržaj fajla:
+
+```text
+supabase/migrations/004_daily_revenue_fields_and_edit_policies.sql
+```
+
+Ova migracija:
+
+- dodaje `check_revenue`, `bank_transfer_revenue`, `correction_revenue` i `edopuna_revenue`
+- čuva postojeće podatke
+- dozvoljava store korisnicima izmenu svog pazara samo 20 minuta nakon slanja
+- dozvoljava adminima izmenu bilo kog pazara bez vremenskog ograničenja
+
 ## Supabase Storage bucket
 
 Migracija automatski kreira bucket:

@@ -10,9 +10,14 @@ export function DailyRevenueTable({ reports, error }: { reports: DailyRevenueRep
           <Th>Radnja</Th>
           <Th>Smena</Th>
           <Th>Gotovina</Th>
+          <Th>Ček</Th>
           <Th>Kartica</Th>
+          <Th>Virman</Th>
+          <Th>Ispravka</Th>
+          <Th>eDopuna</Th>
           <Th>Ukupno</Th>
           <Th>Napomena</Th>
+          <Th>Vreme slanja</Th>
         </tr>
       </thead>
       <tbody>
@@ -22,9 +27,14 @@ export function DailyRevenueTable({ reports, error }: { reports: DailyRevenueRep
             <Td>{report.stores?.name ?? "-"}</Td>
             <Td>{report.shift ?? "-"}</Td>
             <Td>{formatMoney(report.cash_revenue)}</Td>
+            <Td>{formatMoney(report.check_revenue)}</Td>
             <Td>{formatMoney(report.card_revenue)}</Td>
+            <Td>{formatMoney(report.bank_transfer_revenue)}</Td>
+            <Td>{formatMoney(report.correction_revenue)}</Td>
+            <Td>{formatMoney(report.edopuna_revenue)}</Td>
             <Td>{formatMoney(report.total_revenue)}</Td>
             <Td>{report.note ?? "-"}</Td>
+            <Td>{formatDateTime(report.created_at)}</Td>
           </tr>
         ))}
       </tbody>
@@ -114,4 +124,11 @@ function Th({ children }: { children: React.ReactNode }) {
 
 function Td({ children }: { children: React.ReactNode }) {
   return <td className="border-b border-slate-100 px-3 py-2 align-top text-slate-700">{children}</td>;
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat("sr-RS", {
+    dateStyle: "short",
+    timeStyle: "short"
+  }).format(new Date(value));
 }

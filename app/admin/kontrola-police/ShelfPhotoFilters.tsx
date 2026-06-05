@@ -3,7 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { Store } from "@/lib/types";
 
-export function AdminFilters({
+export function ShelfPhotoFilters({
   stores,
   selectedDate,
   selectedStore
@@ -11,7 +11,6 @@ export function AdminFilters({
   stores: Store[];
   selectedDate: string;
   selectedStore: string;
-  resetHref?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
