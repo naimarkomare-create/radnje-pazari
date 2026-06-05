@@ -51,6 +51,37 @@ Ova migracija:
 - dodaje funkciju za transakciono slanje jednog trebovanja
 - menja postojeći naziv `Radnja 10` u `Radnja 11`
 
+Za kontrolu police voća i povrća zatim pokrenite ceo sadržaj fajla:
+
+```text
+supabase/migrations/003_produce_shelf_photo_checks.sql
+```
+
+Ova migracija:
+
+- dodaje tabelu `produce_shelf_photo_checks`
+- kreira privatni Storage bucket `shelf-photos`
+- dodaje Storage politike za upload i pregled slika
+- dozvoljava store korisniku upload samo u folder svoje radnje
+- dozvoljava adminima pregled svih slika
+
+## Supabase Storage bucket
+
+Migracija automatski kreira bucket:
+
+- bucket: `shelf-photos`
+- public: `false`
+- dozvoljeni tipovi: `image/jpeg`, `image/png`, `image/webp`
+- maksimalna veličina: 5 MB
+
+Slike se čuvaju kao:
+
+```text
+shelf-photos/YYYY-MM-DD/store-id/timestamp.jpg
+```
+
+Ako bucket pravite ručno, mora biti privatan i mora imati iste RLS politike iz migracije `003_produce_shelf_photo_checks.sql`.
+
 ## 3. Kreiranje 10 store korisnika
 
 1. U Supabase otvorite `Authentication > Users`.
@@ -124,12 +155,74 @@ Lokalno napravite `.env.local`:
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+CLEANUP_SECRET=your-long-random-cleanup-secret
+CRON_SECRET=your-long-random-cleanup-secret
 ```
 
 Iste promenljive dodajte u Vercel:
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `CLEANUP_SECRET`
+- `CRON_SECRET`
+
+`SUPABASE_SERVICE_ROLE_KEY` se koristi samo na serveru za cleanup starih slika. Nikada ga ne dodavati sa `NEXT_PUBLIC_` prefiksom.
+
+`CRON_SECRET` treba da ima istu vrednost kao `CLEANUP_SECRET` da bi Vercel Cron mogao da pozove cleanup rutu preko `Authorization` headera.
+
+## Cleanup starih slika
+
+Aplikacija ima API rutu:
+
+```text
+/api/cleanup-shelf-photos
+```
+
+Ruta briše slike starije od 30 dana iz `shelf-photos` bucket-a i zatim briše odgovarajuće redove iz `produce_shelf_photo_checks`.
+
+Ručni test sa query secret-om:
+
+```bash
+curl "https://your-vercel-domain.vercel.app/api/cleanup-shelf-photos?secret=YOUR_CLEANUP_SECRET"
+```
+
+Bezbedan test:
+
+1. Prvo proverite u Supabase da li postoje redovi stariji od 30 dana:
+
+```sql
+select id, check_date, storage_path
+from public.produce_shelf_photo_checks
+where check_date < current_date - interval '30 days';
+```
+
+2. Ako nema starih redova, cleanup treba da vrati `deletedFiles: 0`.
+3. Ako želite test brisanja, napravite samo jedan test red i test sliku u `shelf-photos` bucket-u, sa datumom starijim od 30 dana.
+
+## Vercel Cron
+
+`vercel.json` pokreće cleanup jednom dnevno:
+
+```json
+{
+  "crons": [
+    {
+      "path": "/api/cleanup-shelf-photos",
+      "schedule": "0 3 * * *"
+    }
+  ]
+}
+```
+
+Vercel šalje `Authorization: Bearer <CRON_SECRET>` kada je `CRON_SECRET` podešen u environment promenljivama.
+
+## Podsetnik za slikanje police
+
+Store korisnici imaju osnovu za notifikacije na strani `/store/kontrola-police`.
+
+Trenutno dugme `Uključi notifikacije` traži browser dozvolu na uređaju. Web Push slanje dnevnog podsetnika u 12:30 nije lažno implementirano; sledeći korak je dodavanje push subscription tabele, VAPID ključeva i cron rute koja šalje stvarne Web Push poruke.
 
 ## 8. Lokalno pokretanje
 

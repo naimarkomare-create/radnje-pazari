@@ -20,6 +20,11 @@ const actions = [
     description: "Pošaljite zahtev za voće i povrće."
   },
   {
+    href: "/store/kontrola-police",
+    title: "Kontrola police",
+    description: "Pošaljite dnevnu sliku police voća i povrća."
+  },
+  {
     href: "/store/moji-unosi",
     title: "Moji unosi",
     description: "Pregledajte nedavno poslate izveštaje."

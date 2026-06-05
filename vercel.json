@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cleanup-shelf-photos",
+      "schedule": "0 3 * * *"
+    }
+  ]
+}

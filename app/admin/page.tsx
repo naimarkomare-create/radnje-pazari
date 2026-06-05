@@ -8,6 +8,7 @@ const sections = [
   { href: "/admin/pazari", title: "Pazari", description: "Pregled i filteri svih dnevnih pazara." },
   { href: "/admin/temperature", title: "Temperature", description: "Pregled svih izveštaja temperature." },
   { href: "/admin/trebovanja", title: "Trebovanja", description: "Pregled svih zahteva za voće i povrće." },
+  { href: "/admin/kontrola-police", title: "Kontrola police", description: "Pregled dnevnih slika polica po radnjama." },
   { href: "/admin/status", title: "Poslato / nije poslato", description: "Današnji status prijave pazara." },
   { href: "/admin/radnje", title: "Radnje", description: "Pregled svih radnji." }
 ];

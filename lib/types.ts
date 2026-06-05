@@ -83,6 +83,19 @@ export type ProduceRequestBatch = {
   produce_request_items?: ProduceRequestItem[];
 };
 
+export type ProduceShelfPhotoCheck = {
+  id: string;
+  store_id: string;
+  user_id: string;
+  check_date: string;
+  photo_url: string;
+  storage_path: string;
+  note: string | null;
+  created_at: string;
+  stores?: Pick<Store, "id" | "name"> | null;
+  signedUrl?: string;
+};
+
 export type ActionState = {
   ok: boolean;
   message: string;
