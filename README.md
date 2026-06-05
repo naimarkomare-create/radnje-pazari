@@ -78,6 +78,21 @@ Ova migracija:
 - dozvoljava store korisnicima izmenu svog pazara samo 20 minuta nakon slanja
 - dozvoljava adminima izmenu bilo kog pazara bez vremenskog ograničenja
 
+Za admin upravljanje frižiderima/zamrzivačima zatim pokrenite ceo sadržaj fajla:
+
+```text
+supabase/migrations/005_temperature_devices.sql
+```
+
+Ova migracija:
+
+- dodaje tabelu `temperature_devices`
+- dodaje `device_id` na postojeće `temperature_reports`
+- čuva stare temperaturne zapise preko postojećeg `device_name`
+- omogućava adminima dodavanje i izmenu uređaja
+- store korisnicima prikazuje samo aktivne uređaje njihove radnje
+- seje po jedan osnovni frižider i zamrzivač za Radnja 1-9 i Radnja 11
+
 ## Supabase Storage bucket
 
 Migracija automatski kreira bucket:

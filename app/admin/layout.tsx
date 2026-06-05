@@ -6,6 +6,7 @@ const navigation: DashboardNavItem[] = [
   { href: "/admin/pazari", label: "Pazari" },
   { href: "/admin/ispravka-pazara", label: "Ispravka pazara" },
   { href: "/admin/temperature", label: "Temperature" },
+  { href: "/admin/temperature/uredjaji", label: "Uređaji temperatura" },
   { href: "/admin/trebovanja", label: "Trebovanja" },
   { href: "/admin/kontrola-police", label: "Kontrola voća i povrća" }
 ];

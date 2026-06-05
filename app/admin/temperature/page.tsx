@@ -1,6 +1,7 @@
 import { AdminFilters } from "@/components/AdminFilters";
 import { TemperatureTable } from "@/components/AdminTables";
 import { PageHeader } from "@/components/PageHeader";
+import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
 import { todayInBelgrade } from "@/lib/date";
 import { PRODUCE_STORE_NAMES, sortProduceStores } from "@/lib/produce";
@@ -28,7 +29,7 @@ export default async function AdminTemperaturePage({
   const stores = sortProduceStores((storesResult.data ?? []) as Store[]);
   let query = supabase
     .from("temperature_reports")
-    .select("id, store_id, user_id, report_date, device_name, temperature, note, created_at, stores(name)")
+    .select("id, store_id, user_id, device_id, report_date, device_name, temperature, note, created_at, stores(name)")
     .order("report_date", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(100);
@@ -47,6 +48,11 @@ export default async function AdminTemperaturePage({
     <>
       <PageHeader eyebrow="Admin pregled" title="Temperature" />
       <div className="page-content">
+        <div className="flex justify-end">
+          <Link className="button-secondary" href="/admin/temperature/uredjaji">
+            Uređaji temperatura
+          </Link>
+        </div>
         <AdminFilters
           resetHref="/admin/temperature"
           selectedDate={selectedDate}

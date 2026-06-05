@@ -49,22 +49,6 @@ function getNumberOrZero(formData: FormData, key: string, label: string) {
   return value;
 }
 
-function getOptionalNumber(formData: FormData, key: string, label: string) {
-  const raw = getText(formData, key);
-
-  if (!raw) {
-    return null;
-  }
-
-  const value = Number(raw);
-
-  if (!Number.isFinite(value)) {
-    throw new Error(`${label} mora biti broj.`);
-  }
-
-  return value;
-}
-
 function getOptionalText(formData: FormData, key: string) {
   const value = getText(formData, key);
   return value || null;
@@ -154,12 +138,24 @@ export async function submitTemperature(
   try {
     const profile = await requireStore();
     const supabase = createClient();
+    const deviceId = getRequiredText(formData, "device_id", "Naziv uređaja");
+    const { data: device, error: deviceError } = await supabase
+      .from("temperature_devices")
+      .select("id, name")
+      .eq("id", deviceId)
+      .eq("active", true)
+      .single();
+
+    if (deviceError || !device) {
+      return { ok: false, message: "Uređaj nije dostupan." };
+    }
 
     const { error } = await supabase.from("temperature_reports").insert({
       store_id: profile.store_id,
       user_id: profile.id,
       report_date: getRequiredText(formData, "report_date", "Datum"),
-      device_name: getRequiredText(formData, "device_name", "Naziv uređaja"),
+      device_id: device.id,
+      device_name: device.name,
       temperature: getRequiredNumber(formData, "temperature", "Temperatura"),
       note: getOptionalText(formData, "note")
     });

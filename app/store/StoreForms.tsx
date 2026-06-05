@@ -3,7 +3,7 @@
 import { useFormState, useFormStatus } from "react-dom";
 import { submitDailyRevenue, submitTemperature } from "@/app/store/actions";
 import { calculateRevenueTotal, REVENUE_FIELDS, type RevenueFieldName } from "@/lib/revenue";
-import type { ActionState } from "@/lib/types";
+import type { ActionState, TemperatureDevice } from "@/lib/types";
 import { useMemo, useState } from "react";
 
 const initialState: ActionState = { ok: false, message: "" };
@@ -59,7 +59,15 @@ export function DailyRevenueForm({ storeName, today }: { storeName: string; toda
   );
 }
 
-export function TemperatureForm({ storeName, today }: { storeName: string; today: string }) {
+export function TemperatureForm({
+  storeName,
+  today,
+  devices
+}: {
+  storeName: string;
+  today: string;
+  devices: TemperatureDevice[];
+}) {
   const [state, action] = useFormState(submitTemperature, initialState);
 
   return (
@@ -71,8 +79,21 @@ export function TemperatureForm({ storeName, today }: { storeName: string; today
       </label>
       <label className="field">
         <span className="label">Naziv uređaja</span>
-        <input className="input" name="device_name" required />
+        <select className="input" disabled={devices.length === 0} name="device_id" required>
+          <option value="">Izaberite uređaj</option>
+          {devices.map((device) => (
+            <option key={device.id} value={device.id}>
+              {device.name}
+              {device.device_type ? ` - ${device.device_type}` : ""}
+            </option>
+          ))}
+        </select>
       </label>
+      {devices.length === 0 ? (
+        <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+          Nema aktivnih uređaja. Kontaktirajte admina.
+        </p>
+      ) : null}
       <NumberField label="Temperatura" name="temperature" required step="0.1" />
       <NoteField />
       <FormMessage state={state} />

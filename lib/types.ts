@@ -37,12 +37,26 @@ export type TemperatureReport = {
   id: string;
   store_id: string;
   user_id: string;
+  device_id: string | null;
   report_date: string;
   device_name: string;
   temperature: number;
   note: string | null;
   created_at: string;
   stores?: Pick<Store, "name"> | null;
+};
+
+export type TemperatureDevice = {
+  id: string;
+  store_id: string;
+  name: string;
+  device_type: "Frižider" | "Zamrzivač" | "Vitrina" | "Ostalo" | null;
+  min_allowed: number | null;
+  max_allowed: number | null;
+  active: boolean;
+  sort_order: number;
+  created_at: string;
+  stores?: Pick<Store, "id" | "name"> | null;
 };
 
 export type ProduceRequest = {
