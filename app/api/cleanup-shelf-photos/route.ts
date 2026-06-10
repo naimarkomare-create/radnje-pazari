@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 
 type ShelfPhotoCleanupRow = {
   id: string;
-  storage_path: string;
+  storage_path: string | null;
   check_date: string;
 };
 
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const candidates = ((data ?? []) as ShelfPhotoCleanupRow[]).filter((row) => row.storage_path.startsWith(`${SHELF_PHOTOS_BUCKET}/`));
+  const candidates = ((data ?? []) as ShelfPhotoCleanupRow[]).filter((row) => row.storage_path?.startsWith(`${SHELF_PHOTOS_BUCKET}/`));
   const deletable = candidates
     .map((row) => ({ ...row, objectPath: objectPathFromStoragePath(row.storage_path) }))
     .filter((row): row is ShelfPhotoCleanupRow & { objectPath: string } => Boolean(row.objectPath));

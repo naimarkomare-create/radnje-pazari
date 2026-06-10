@@ -8,7 +8,9 @@ const sections = [
   { href: "/admin/ispravka-pazara", title: "Ispravka pazara", description: "Izmena i korekcija poslatih pazara." },
   { href: "/admin/temperature", title: "Temperature", description: "Pregled svih izveštaja temperature." },
   { href: "/admin/trebovanja", title: "Trebovanja", description: "Pregled svih zahteva za voće i povrće." },
-  { href: "/admin/kontrola-police", title: "Kontrola voća i povrća", description: "Pregled dnevnih slika polica po radnjama." }
+  { href: "/admin/kontrola-police", title: "Kontrola voća i povrća", description: "Pregled dnevnih slika polica po radnjama." },
+  { href: "/admin/mapa", title: "Mapa", description: "Lokacije radnji i dnevni statusi na mapi." },
+  { href: "/admin/zadaci", title: "Pošalji zadatak", description: "Kreiranje i praćenje dnevnih zadataka po radnjama." }
 ];
 
 export default async function AdminDashboardPage() {
@@ -35,7 +37,7 @@ export default async function AdminDashboardPage() {
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {sections.map((section) => (
             <Link
-              className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm transition hover:border-leaf hover:shadow"
+              className="interactive-card rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
               href={section.href}
               key={section.href}
             >
@@ -52,7 +54,7 @@ export default async function AdminDashboardPage() {
 
 function Summary({ label, value }: { label: string; value: number }) {
   return (
-    <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+    <div className="interactive-card min-w-0 rounded-lg border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
       <p className="text-xs font-semibold text-slate-500 sm:text-sm">{label}</p>
       <p className="mt-1 text-2xl font-bold text-ink">{value}</p>
     </div>

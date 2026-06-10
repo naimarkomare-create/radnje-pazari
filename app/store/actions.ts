@@ -154,6 +154,7 @@ export async function submitTemperature(
       store_id: profile.store_id,
       user_id: profile.id,
       report_date: getRequiredText(formData, "report_date", "Datum"),
+      shift: getRequiredText(formData, "shift", "Smena"),
       device_id: device.id,
       device_name: device.name,
       temperature: getRequiredNumber(formData, "temperature", "Temperatura"),

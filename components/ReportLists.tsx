@@ -42,7 +42,9 @@ export function TemperatureReportsList({
           <div className="min-w-0">
             <p className="font-semibold text-ink">{report.device_name}</p>
             <p className="mt-1 text-sm text-slate-500">
-              {showStore ? `${report.stores?.name ?? "Radnja"} · ${report.report_date}` : report.report_date}
+              {showStore
+                ? `${report.stores?.name ?? "Radnja"} · ${report.report_date} · ${report.shift ?? "Bez smene"}`
+                : `${report.report_date} · ${report.shift ?? "Bez smene"}`}
             </p>
           </div>
           <span className="shrink-0 text-sm font-semibold text-slate-700">{Number(report.temperature).toFixed(1)} °C</span>

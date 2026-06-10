@@ -8,7 +8,9 @@ const navigation: DashboardNavItem[] = [
   { href: "/admin/temperature", label: "Temperature" },
   { href: "/admin/temperature/uredjaji", label: "Uređaji temperatura" },
   { href: "/admin/trebovanja", label: "Trebovanja" },
-  { href: "/admin/kontrola-police", label: "Kontrola voća i povrća" }
+  { href: "/admin/kontrola-police", label: "Kontrola voća i povrća" },
+  { href: "/admin/mapa", label: "Mapa" },
+  { href: "/admin/zadaci", label: "Pošalji zadatak" }
 ];
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {

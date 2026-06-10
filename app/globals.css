@@ -26,15 +26,15 @@ textarea {
 }
 
 .input {
-  @apply w-full rounded-md border border-slate-300 bg-white px-3 py-3 text-base text-slate-900 outline-none transition focus:border-leaf focus:ring-2 focus:ring-leaf/20;
+  @apply w-full rounded-md border border-slate-300 bg-white px-3 py-3 text-base text-slate-900 outline-none transition-all duration-200 ease-out focus:border-leaf focus:ring-2 focus:ring-leaf/20;
 }
 
 .button-primary {
-  @apply inline-flex min-h-12 items-center justify-center rounded-md bg-leaf px-5 py-3 text-base font-semibold text-white transition hover:bg-leaf/90 disabled:cursor-not-allowed disabled:opacity-60;
+  @apply inline-flex min-h-12 items-center justify-center rounded-md bg-leaf px-5 py-3 text-base font-semibold text-white transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-leaf/90 hover:shadow-md active:translate-y-0 active:scale-[0.98] disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none;
 }
 
 .button-secondary {
-  @apply inline-flex min-h-11 items-center justify-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50;
+  @apply inline-flex min-h-11 items-center justify-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md active:translate-y-0 active:scale-[0.98] disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none;
 }
 
 .section {
@@ -43,12 +43,84 @@ textarea {
 
 .page-content {
   @apply mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6;
+  animation: page-fade-in 220ms ease-out both;
 }
 
 .report-row {
-  @apply flex items-start justify-between gap-4 rounded-md border border-slate-200 bg-slate-50 px-3 py-3;
+  @apply flex items-start justify-between gap-4 rounded-md border border-slate-200 bg-slate-50 px-3 py-3 transition-all duration-200 ease-out hover:border-slate-300 hover:bg-white hover:shadow-sm;
 }
 
 .quantity-button {
-  @apply flex size-12 items-center justify-center rounded-md border border-slate-300 bg-white text-2xl font-bold text-slate-700 transition hover:border-leaf hover:text-leaf active:bg-slate-100;
+  @apply flex size-12 items-center justify-center rounded-md border border-slate-300 bg-white text-2xl font-bold text-slate-700 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-leaf hover:text-leaf hover:shadow-md active:translate-y-0 active:scale-[0.98] active:bg-slate-100;
+}
+
+.interactive-card {
+  @apply transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-leaf/60 hover:shadow-md active:translate-y-0 active:scale-[0.995];
+}
+
+tbody tr {
+  @apply transition-colors duration-150 ease-out hover:bg-slate-50;
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 8px;
+  animation: popup-fade-in 160ms ease-out both;
+}
+
+.store-map-marker {
+  transition:
+    transform 160ms ease-out,
+    box-shadow 160ms ease-out,
+    filter 160ms ease-out;
+}
+
+.store-map-marker:hover {
+  filter: brightness(1.04);
+}
+
+.store-map-marker-supermarket:hover {
+  transform: scale(1.08);
+}
+
+.store-map-marker-medium:hover {
+  transform: scale(1.08);
+}
+
+.store-map-marker-mini:hover {
+  transform: rotate(45deg) scale(1.08);
+}
+
+@keyframes page-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes popup-fade-in {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+  }
 }

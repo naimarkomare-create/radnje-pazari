@@ -3,6 +3,9 @@ export type UserRole = "admin" | "store";
 export type Store = {
   id: string;
   name: string;
+  latitude: number | null;
+  longitude: number | null;
+  address: string | null;
   created_at: string;
 };
 
@@ -39,6 +42,7 @@ export type TemperatureReport = {
   user_id: string;
   device_id: string | null;
   report_date: string;
+  shift: string | null;
   device_name: string;
   temperature: number;
   note: string | null;
@@ -106,12 +110,45 @@ export type ProduceShelfPhotoCheck = {
   store_id: string;
   user_id: string;
   check_date: string;
-  photo_url: string;
-  storage_path: string;
+  photo_url: string | null;
+  storage_path: string | null;
   note: string | null;
   created_at: string;
   stores?: Pick<Store, "id" | "name"> | null;
   signedUrl?: string;
+};
+
+export type TaskPriority = "podsetnik" | "vazno" | "hitno";
+export type TaskStatus = "pending" | "done" | "late";
+
+export type StoreTask = {
+  id: string;
+  title: string;
+  description: string | null;
+  due_date: string;
+  due_time: string | null;
+  priority: TaskPriority;
+  photo_required: boolean;
+  created_by: string | null;
+  created_at: string;
+  active: boolean;
+  store_task_assignments?: StoreTaskAssignment[];
+};
+
+export type StoreTaskAssignment = {
+  id: string;
+  task_id: string;
+  store_id: string;
+  status: TaskStatus;
+  completed_at: string | null;
+  completed_by: string | null;
+  photo_path: string | null;
+  photo_url: string | null;
+  created_at: string;
+  stores?: Pick<Store, "id" | "name"> | null;
+  store_tasks?: Omit<StoreTask, "store_task_assignments"> | null;
+  signedPhotoUrl?: string;
+  computedStatus?: TaskStatus;
 };
 
 export type ActionState = {

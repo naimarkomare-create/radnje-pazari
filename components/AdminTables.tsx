@@ -49,6 +49,7 @@ export function TemperatureTable({ reports, error }: { reports: TemperatureRepor
         <tr>
           <Th>Datum</Th>
           <Th>Radnja</Th>
+          <Th>Smena</Th>
           <Th>Naziv uređaja</Th>
           <Th>Temperatura</Th>
           <Th>Napomena</Th>
@@ -59,6 +60,7 @@ export function TemperatureTable({ reports, error }: { reports: TemperatureRepor
           <tr key={report.id}>
             <Td>{report.report_date}</Td>
             <Td>{report.stores?.name ?? "-"}</Td>
+            <Td>{report.shift ?? "-"}</Td>
             <Td>{report.device_name}</Td>
             <Td>{Number(report.temperature).toFixed(1)} °C</Td>
             <Td>{report.note ?? "-"}</Td>
@@ -108,7 +110,7 @@ function AdminTable({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <section className="interactive-card rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
       <h2 className="text-lg font-bold text-ink">{title}</h2>
       {error ? <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
       <div className="mt-3 overflow-x-auto">

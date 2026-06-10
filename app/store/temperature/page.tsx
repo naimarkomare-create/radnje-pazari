@@ -12,7 +12,7 @@ export default async function StoreTemperaturePage() {
   const [result, devicesResult] = await Promise.all([
     supabase
     .from("temperature_reports")
-    .select("id, store_id, user_id, device_id, report_date, device_name, temperature, note, created_at")
+    .select("id, store_id, user_id, device_id, report_date, shift, device_name, temperature, note, created_at")
     .order("created_at", { ascending: false })
       .limit(30),
     supabase

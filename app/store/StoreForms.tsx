@@ -78,6 +78,14 @@ export function TemperatureForm({
         <input className="input" defaultValue={today} name="report_date" required type="date" />
       </label>
       <label className="field">
+        <span className="label">Smena</span>
+        <select className="input" name="shift" required>
+          <option value="">Izaberite smenu</option>
+          <option value="Prva smena">Prva smena</option>
+          <option value="Druga smena">Druga smena</option>
+        </select>
+      </label>
+      <label className="field">
         <span className="label">Naziv uređaja</span>
         <select className="input" disabled={devices.length === 0} name="device_id" required>
           <option value="">Izaberite uređaj</option>

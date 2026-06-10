@@ -1,3 +1,4 @@
+import { DeleteShelfPhotoButton } from "@/app/admin/kontrola-police/DeleteShelfPhotoButton";
 import { ShelfPhotoFilters } from "@/app/admin/kontrola-police/ShelfPhotoFilters";
 import { PageHeader } from "@/components/PageHeader";
 import { formatTime } from "@/components/ShelfPhotoGrid";
@@ -42,7 +43,7 @@ export default async function AdminShelfPhotoPage({
       signedUrl: await createSignedShelfPhotoUrl(supabase, photo.storage_path)
     }))
   );
-  const submittedIds = new Set(photos.map((photo) => photo.store_id));
+  const submittedIds = new Set(photos.filter((photo) => photo.storage_path).map((photo) => photo.store_id));
   const submittedStores = stores.filter((store) => submittedIds.has(store.id));
   const missingStores = stores.filter((store) => !submittedIds.has(store.id));
 
@@ -105,6 +106,7 @@ function ShelfPhotoAdminTable({ photos }: { photos: ProduceShelfPhotoCheck[] }) 
               <Th>Slika</Th>
               <Th>Napomena</Th>
               <Th>Status</Th>
+              <Th>Akcija</Th>
             </tr>
           </thead>
           <tbody>
@@ -123,7 +125,8 @@ function ShelfPhotoAdminTable({ photos }: { photos: ProduceShelfPhotoCheck[] }) 
                   )}
                 </Td>
                 <Td>{photo.note ?? "-"}</Td>
-                <Td>Poslato</Td>
+                <Td>{photo.storage_path ? "Poslato" : "Slika obrisana"}</Td>
+                <Td>{photo.storage_path ? <DeleteShelfPhotoButton photoId={photo.id} /> : "-"}</Td>
               </tr>
             ))}
           </tbody>
