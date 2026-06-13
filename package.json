@@ -7,7 +7,11 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "lint": "next lint"
+    "lint": "next lint",
+    "biznisoft:discover": "node scripts/biznisoft-discover.js",
+    "biznisoft:describe": "node scripts/biznisoft-describe.js",
+    "biznisoft:describe-article-fields": "node scripts/biznisoft-describe-article-fields.js",
+    "biznisoft:test-session": "node scripts/biznisoft-test-session.js"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
@@ -18,6 +22,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-leaflet": "^4.2.1",
+    "soap": "^1.9.3",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

@@ -10,7 +10,8 @@ const sections = [
   { href: "/admin/trebovanja", title: "Trebovanja", description: "Pregled svih zahteva za voće i povrće." },
   { href: "/admin/kontrola-police", title: "Kontrola voća i povrća", description: "Pregled dnevnih slika polica po radnjama." },
   { href: "/admin/mapa", title: "Mapa", description: "Lokacije radnji i dnevni statusi na mapi." },
-  { href: "/admin/zadaci", title: "Pošalji zadatak", description: "Kreiranje i praćenje dnevnih zadataka po radnjama." }
+  { href: "/admin/zadaci", title: "Pošalji zadatak", description: "Kreiranje i praćenje dnevnih zadataka po radnjama." },
+  { href: "/admin/biznisoft-akcije", title: "BizniSoft akcije", description: "Sinhronizacija i zadaci za akcijske cene." }
 ];
 
 export default async function AdminDashboardPage() {

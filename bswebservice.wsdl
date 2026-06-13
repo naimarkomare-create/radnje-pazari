@@ -1,0 +1,438 @@
+<?xml version="1.0"?>
+<definitions xmlns="http://schemas.xmlsoap.org/wsdl/" xmlns:xs="http://www.w3.org/2001/XMLSchema" name="IBSWebServiceservice" targetNamespace="http://tempuri.org/" xmlns:tns="http://tempuri.org/" xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:mime="http://schemas.xmlsoap.org/wsdl/mime/">
+  <message name="GetSessionHandle0Request">
+    <part name="Language" type="xs:int"/>
+    <part name="CompanyID" type="xs:int"/>
+    <part name="CompanyYear" type="xs:int"/>
+    <part name="Username" type="xs:string"/>
+    <part name="Password" type="xs:string"/>
+    <part name="BSLiveID" type="xs:string"/>
+    <part name="BSLivePassword" type="xs:string"/>
+    <part name="compress" type="xs:boolean"/>
+  </message>
+  <message name="GetSessionHandle0Response">
+    <part name="return" type="xs:string"/>
+  </message>
+  <message name="GetItem1Request">
+    <part name="SessionHandle" type="xs:string"/>
+    <part name="sItemType" type="xs:string"/>
+    <part name="JSONGetItemRequest" type="xs:string"/>
+  </message>
+  <message name="GetItem1Response">
+    <part name="return" type="xs:string"/>
+  </message>
+  <message name="GetItems2Request">
+    <part name="SessionHandle" type="xs:string"/>
+    <part name="sItemType" type="xs:string"/>
+    <part name="JSONGetItemsRequest" type="xs:string"/>
+    <part name="limit" type="xs:int"/>
+  </message>
+  <message name="GetItems2Response">
+    <part name="return" type="xs:string"/>
+  </message>
+  <message name="GetItems23Request">
+    <part name="SessionHandle" type="xs:string"/>
+    <part name="sItemType" type="xs:string"/>
+    <part name="JSONGetItemsRequest" type="xs:string"/>
+    <part name="offset" type="xs:int"/>
+    <part name="rowcount" type="xs:int"/>
+  </message>
+  <message name="GetItems23Response">
+    <part name="return" type="xs:string"/>
+  </message>
+  <message name="AddItem4Request">
+    <part name="SessionHandle" type="xs:string"/>
+    <part name="sItemType" type="xs:string"/>
+    <part name="JSONAddItemRequest" type="xs:string"/>
+  </message>
+  <message name="AddItem4Response">
+    <part name="return" type="xs:string"/>
+  </message>
+  <message name="AddItems5Request">
+    <part name="SessionHandle" type="xs:string"/>
+    <part name="sItemType" type="xs:string"/>
+    <part name="JSONAddItemsRequest" type="xs:string"/>
+  </message>
+  <message name="AddItems5Response">
+    <part name="return" type="xs:string"/>
+  </message>
+  <message name="UpdateItem6Request">
+    <part name="SessionHandle" type="xs:string"/>
+    <part name="sItemType" type="xs:string"/>
+    <part name="JSONAddItemRequest" type="xs:string"/>
+  </message>
+  <message name="UpdateItem6Response">
+    <part name="return" type="xs:string"/>
+  </message>
+  <message name="DeleteItem7Request">
+    <part name="SessionHandle" type="xs:string"/>
+    <part name="sItemType" type="xs:string"/>
+    <part name="JSONAddItemRequest" type="xs:string"/>
+  </message>
+  <message name="DeleteItem7Response">
+    <part name="return" type="xs:string"/>
+  </message>
+  <message name="Execute8Request">
+    <part name="SessionHandle" type="xs:string"/>
+    <part name="sItemType" type="xs:string"/>
+    <part name="JSONExecuteRequest" type="xs:string"/>
+  </message>
+  <message name="Execute8Response">
+    <part name="return" type="xs:string"/>
+  </message>
+  <message name="GetBuild9Request">
+    <part name="SessionHandle" type="xs:string"/>
+  </message>
+  <message name="GetBuild9Response">
+    <part name="return" type="xs:string"/>
+  </message>
+  <message name="GetAttachment10Request">
+    <part name="SessionHandle" type="xs:string"/>
+    <part name="AttachmentType" type="xs:string"/>
+    <part name="QueryData" type="xs:string"/>
+  </message>
+  <message name="GetAttachment10Response">
+    <part name="return" type="xs:base64Binary"/>
+  </message>
+  <message name="UploadKomercImage11Request">
+    <part name="SessionHandle" type="xs:string"/>
+    <part name="id" type="xs:string"/>
+    <part name="slika" type="xs:base64Binary"/>
+  </message>
+  <message name="UploadKomercImage11Response">
+    <part name="return" type="xs:string"/>
+  </message>
+  <message name="UploadArticleImage12Request">
+    <part name="SessionHandle" type="xs:string"/>
+    <part name="ArticleID" type="xs:int"/>
+    <part name="ImageID" type="xs:int"/>
+    <part name="slika" type="xs:base64Binary"/>
+  </message>
+  <message name="UploadArticleImage12Response">
+    <part name="return" type="xs:string"/>
+  </message>
+  <message name="ClearArticleImage13Request">
+    <part name="SessionHandle" type="xs:string"/>
+    <part name="ArticleID" type="xs:int"/>
+    <part name="ImageID" type="xs:int"/>
+  </message>
+  <message name="ClearArticleImage13Response">
+    <part name="return" type="xs:string"/>
+  </message>
+  <message name="GetView14Request">
+    <part name="SessionHandle" type="xs:string"/>
+    <part name="sItemType" type="xs:string"/>
+    <part name="JSONGetItemsRequest" type="xs:string"/>
+    <part name="ViewName" type="xs:string"/>
+  </message>
+  <message name="GetView14Response">
+    <part name="return" type="xs:string"/>
+  </message>
+  <message name="SelectFromView15Request">
+    <part name="SessionHandle" type="xs:string"/>
+    <part name="SQL" type="xs:string"/>
+  </message>
+  <message name="SelectFromView15Response">
+    <part name="return" type="xs:string"/>
+  </message>
+  <message name="GetConfig_bool16Request">
+    <part name="SessionHandle" type="xs:string"/>
+    <part name="ConfigID" type="xs:int"/>
+  </message>
+  <message name="GetConfig_bool16Response">
+    <part name="return" type="xs:boolean"/>
+  </message>
+  <message name="GetConfig_integer17Request">
+    <part name="SessionHandle" type="xs:string"/>
+    <part name="ConfigID" type="xs:int"/>
+  </message>
+  <message name="GetConfig_integer17Response">
+    <part name="return" type="xs:int"/>
+  </message>
+  <message name="GetConfig_string18Request">
+    <part name="SessionHandle" type="xs:string"/>
+    <part name="ConfigID" type="xs:int"/>
+  </message>
+  <message name="GetConfig_string18Response">
+    <part name="return" type="xs:string"/>
+  </message>
+  <portType name="IBSWebService">
+    <operation name="GetSessionHandle">
+      <input message="tns:GetSessionHandle0Request"/>
+      <output message="tns:GetSessionHandle0Response"/>
+    </operation>
+    <operation name="GetItem">
+      <input message="tns:GetItem1Request"/>
+      <output message="tns:GetItem1Response"/>
+    </operation>
+    <operation name="GetItems">
+      <input message="tns:GetItems2Request"/>
+      <output message="tns:GetItems2Response"/>
+    </operation>
+    <operation name="GetItems2">
+      <input message="tns:GetItems23Request"/>
+      <output message="tns:GetItems23Response"/>
+    </operation>
+    <operation name="AddItem">
+      <input message="tns:AddItem4Request"/>
+      <output message="tns:AddItem4Response"/>
+    </operation>
+    <operation name="AddItems">
+      <input message="tns:AddItems5Request"/>
+      <output message="tns:AddItems5Response"/>
+    </operation>
+    <operation name="UpdateItem">
+      <input message="tns:UpdateItem6Request"/>
+      <output message="tns:UpdateItem6Response"/>
+    </operation>
+    <operation name="DeleteItem">
+      <input message="tns:DeleteItem7Request"/>
+      <output message="tns:DeleteItem7Response"/>
+    </operation>
+    <operation name="Execute">
+      <input message="tns:Execute8Request"/>
+      <output message="tns:Execute8Response"/>
+    </operation>
+    <operation name="GetBuild">
+      <input message="tns:GetBuild9Request"/>
+      <output message="tns:GetBuild9Response"/>
+    </operation>
+    <operation name="GetAttachment">
+      <input message="tns:GetAttachment10Request"/>
+      <output message="tns:GetAttachment10Response"/>
+    </operation>
+    <operation name="UploadKomercImage">
+      <input message="tns:UploadKomercImage11Request"/>
+      <output message="tns:UploadKomercImage11Response"/>
+    </operation>
+    <operation name="UploadArticleImage">
+      <input message="tns:UploadArticleImage12Request"/>
+      <output message="tns:UploadArticleImage12Response"/>
+    </operation>
+    <operation name="ClearArticleImage">
+      <input message="tns:ClearArticleImage13Request"/>
+      <output message="tns:ClearArticleImage13Response"/>
+    </operation>
+    <operation name="GetView">
+      <input message="tns:GetView14Request"/>
+      <output message="tns:GetView14Response"/>
+    </operation>
+    <operation name="SelectFromView">
+      <input message="tns:SelectFromView15Request"/>
+      <output message="tns:SelectFromView15Response"/>
+    </operation>
+    <operation name="GetConfig_bool">
+      <input message="tns:GetConfig_bool16Request"/>
+      <output message="tns:GetConfig_bool16Response"/>
+    </operation>
+    <operation name="GetConfig_integer">
+      <input message="tns:GetConfig_integer17Request"/>
+      <output message="tns:GetConfig_integer17Response"/>
+    </operation>
+    <operation name="GetConfig_string">
+      <input message="tns:GetConfig_string18Request"/>
+      <output message="tns:GetConfig_string18Response"/>
+    </operation>
+  </portType>
+  <binding name="IBSWebServicebinding" type="tns:IBSWebService">
+    <binding xmlns="http://schemas.xmlsoap.org/wsdl/soap/" style="rpc" transport="http://schemas.xmlsoap.org/soap/http"/>
+    <operation name="GetSessionHandle">
+      <operation xmlns="http://schemas.xmlsoap.org/wsdl/soap/" soapAction="urn:BSWebSericeIntf-IBSWebService#GetSessionHandle" style="rpc"/>
+      <input>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </input>
+      <output>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </output>
+    </operation>
+    <operation name="GetItem">
+      <operation xmlns="http://schemas.xmlsoap.org/wsdl/soap/" soapAction="urn:BSWebSericeIntf-IBSWebService#GetItem" style="rpc"/>
+      <input>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </input>
+      <output>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </output>
+    </operation>
+    <operation name="GetItems">
+      <operation xmlns="http://schemas.xmlsoap.org/wsdl/soap/" soapAction="urn:BSWebSericeIntf-IBSWebService#GetItems" style="rpc"/>
+      <input>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </input>
+      <output>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </output>
+    </operation>
+    <operation name="GetItems2">
+      <operation xmlns="http://schemas.xmlsoap.org/wsdl/soap/" soapAction="urn:BSWebSericeIntf-IBSWebService#GetItems2" style="rpc"/>
+      <input>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </input>
+      <output>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </output>
+    </operation>
+    <operation name="AddItem">
+      <operation xmlns="http://schemas.xmlsoap.org/wsdl/soap/" soapAction="urn:BSWebSericeIntf-IBSWebService#AddItem" style="rpc"/>
+      <input>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </input>
+      <output>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </output>
+    </operation>
+    <operation name="AddItems">
+      <operation xmlns="http://schemas.xmlsoap.org/wsdl/soap/" soapAction="urn:BSWebSericeIntf-IBSWebService#AddItems" style="rpc"/>
+      <input>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </input>
+      <output>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </output>
+    </operation>
+    <operation name="UpdateItem">
+      <operation xmlns="http://schemas.xmlsoap.org/wsdl/soap/" soapAction="urn:BSWebSericeIntf-IBSWebService#UpdateItem" style="rpc"/>
+      <input>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </input>
+      <output>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </output>
+    </operation>
+    <operation name="DeleteItem">
+      <operation xmlns="http://schemas.xmlsoap.org/wsdl/soap/" soapAction="urn:BSWebSericeIntf-IBSWebService#DeleteItem" style="rpc"/>
+      <input>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </input>
+      <output>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </output>
+    </operation>
+    <operation name="Execute">
+      <operation xmlns="http://schemas.xmlsoap.org/wsdl/soap/" soapAction="urn:BSWebSericeIntf-IBSWebService#Execute" style="rpc"/>
+      <input>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </input>
+      <output>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </output>
+    </operation>
+    <operation name="GetBuild">
+      <operation xmlns="http://schemas.xmlsoap.org/wsdl/soap/" soapAction="urn:BSWebSericeIntf-IBSWebService#GetBuild" style="rpc"/>
+      <input>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </input>
+      <output>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </output>
+    </operation>
+    <operation name="GetAttachment">
+      <operation xmlns="http://schemas.xmlsoap.org/wsdl/soap/" soapAction="urn:BSWebSericeIntf-IBSWebService#GetAttachment" style="rpc"/>
+      <input>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </input>
+      <output>
+        <mime:multipartRelated>
+          <part xmlns="http://schemas.xmlsoap.org/wsdl/mime/">
+            <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+          </part>
+          <part xmlns="http://schemas.xmlsoap.org/wsdl/mime/">
+            <content part="return" type="application/binary"/>
+          </part>
+        </mime:multipartRelated>
+      </output>
+    </operation>
+    <operation name="UploadKomercImage">
+      <operation xmlns="http://schemas.xmlsoap.org/wsdl/soap/" soapAction="urn:BSWebSericeIntf-IBSWebService#UploadKomercImage" style="rpc"/>
+      <input>
+        <mime:multipartRelated>
+          <part xmlns="http://schemas.xmlsoap.org/wsdl/mime/">
+            <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+          </part>
+          <part xmlns="http://schemas.xmlsoap.org/wsdl/mime/">
+            <content part="slika" type="application/binary"/>
+          </part>
+        </mime:multipartRelated>
+      </input>
+      <output>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </output>
+    </operation>
+    <operation name="UploadArticleImage">
+      <operation xmlns="http://schemas.xmlsoap.org/wsdl/soap/" soapAction="urn:BSWebSericeIntf-IBSWebService#UploadArticleImage" style="rpc"/>
+      <input>
+        <mime:multipartRelated>
+          <part xmlns="http://schemas.xmlsoap.org/wsdl/mime/">
+            <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+          </part>
+          <part xmlns="http://schemas.xmlsoap.org/wsdl/mime/">
+            <content part="slika" type="application/binary"/>
+          </part>
+        </mime:multipartRelated>
+      </input>
+      <output>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </output>
+    </operation>
+    <operation name="ClearArticleImage">
+      <operation xmlns="http://schemas.xmlsoap.org/wsdl/soap/" soapAction="urn:BSWebSericeIntf-IBSWebService#ClearArticleImage" style="rpc"/>
+      <input>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </input>
+      <output>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </output>
+    </operation>
+    <operation name="GetView">
+      <operation xmlns="http://schemas.xmlsoap.org/wsdl/soap/" soapAction="urn:BSWebSericeIntf-IBSWebService#GetView" style="rpc"/>
+      <input>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </input>
+      <output>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </output>
+    </operation>
+    <operation name="SelectFromView">
+      <operation xmlns="http://schemas.xmlsoap.org/wsdl/soap/" soapAction="urn:BSWebSericeIntf-IBSWebService#SelectFromView" style="rpc"/>
+      <input>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </input>
+      <output>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </output>
+    </operation>
+    <operation name="GetConfig_bool">
+      <operation xmlns="http://schemas.xmlsoap.org/wsdl/soap/" soapAction="urn:BSWebSericeIntf-IBSWebService#GetConfig_bool" style="rpc"/>
+      <input>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </input>
+      <output>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </output>
+    </operation>
+    <operation name="GetConfig_integer">
+      <operation xmlns="http://schemas.xmlsoap.org/wsdl/soap/" soapAction="urn:BSWebSericeIntf-IBSWebService#GetConfig_integer" style="rpc"/>
+      <input>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </input>
+      <output>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </output>
+    </operation>
+    <operation name="GetConfig_string">
+      <operation xmlns="http://schemas.xmlsoap.org/wsdl/soap/" soapAction="urn:BSWebSericeIntf-IBSWebService#GetConfig_string" style="rpc"/>
+      <input>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </input>
+      <output>
+        <body xmlns="http://schemas.xmlsoap.org/wsdl/soap/" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="urn:BSWebSericeIntf-IBSWebService"/>
+      </output>
+    </operation>
+  </binding>
+  <service name="IBSWebServiceservice">
+    <port name="IBSWebServicePort" binding="tns:IBSWebServicebinding">
+      <address xmlns="http://schemas.xmlsoap.org/wsdl/soap/" location="http://79.175.71.83:58080/soap/IBSWebService"/>
+    </port>
+  </service>
+</definitions>
+

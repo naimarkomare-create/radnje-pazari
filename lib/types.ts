@@ -132,6 +132,8 @@ export type StoreTask = {
   created_by: string | null;
   created_at: string;
   active: boolean;
+  source_type: string | null;
+  source_key: string | null;
   store_task_assignments?: StoreTaskAssignment[];
 };
 
@@ -154,4 +156,43 @@ export type StoreTaskAssignment = {
 export type ActionState = {
   ok: boolean;
   message: string;
+};
+
+export type BizniSoftSaleAction = {
+  id: string;
+  source_key: string;
+  sale_action_name: string | null;
+  action_type: number;
+  loyalty_level: number | null;
+  storage_id: number | null;
+  article_id: number | null;
+  article_attribute_id: number | null;
+  discount_percent: number | null;
+  wholesale_price: number | null;
+  retail_price: number | null;
+  from_chapter: string | null;
+  chapter_to: string | null;
+  priority_level: number | null;
+  raw: Record<string, unknown>;
+  synced_at: string;
+};
+
+export type BizniSoftArticle = {
+  article_id: number;
+  name: string | null;
+  barcode: string | null;
+  article_code: string | null;
+  cat_no: string | null;
+  unit: string | null;
+  raw: Record<string, unknown>;
+  synced_at: string;
+};
+
+export type BizniSoftSaleActionWithArticle = BizniSoftSaleAction & {
+  article_name: string | null;
+  article_barcode: string | null;
+  article_code: string | null;
+  article_cat_no: string | null;
+  article_unit: string | null;
+  article_raw: Record<string, unknown> | null;
 };

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+                  xmlns:urn="urn:BSWebSericeIntf-IBSServiceHelper"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <urn:GetJSONFieldsDescription>
+      <sItemType xsi:type="xsd:string">itSaleActions</sItemType>
+      <English xsi:type="xsd:boolean">false</English>
+    </urn:GetJSONFieldsDescription>
+  </soapenv:Body>
+</soapenv:Envelope>

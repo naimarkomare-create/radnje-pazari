@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+                  xmlns:urn="urn:BSWebSericeIntf-IBSWebService"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <urn:GetItems>
+      <SessionHandle xsi:type="xsd:string">{D714B38C-EC27-451F-A770-2F26E3861021}</SessionHandle>
+      <sItemType xsi:type="xsd:string">itSaleActions</sItemType>
+      <JSONGetItemsRequest xsi:type="xsd:string">{"ActionType":1}</JSONGetItemsRequest>
+      <limit xsi:type="xsd:int">100</limit>
+    </urn:GetItems>
+  </soapenv:Body>
+</soapenv:Envelope>

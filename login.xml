@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+                  xmlns:urn="urn:BSWebSericeIntf-IBSWebService"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <urn:GetSessionHandle>
+      <Language xsi:type="xsd:int">0</Language>
+      <CompanyID xsi:type="xsd:int">1</CompanyID>
+      <CompanyYear xsi:type="xsd:int">2026</CompanyYear>
+      <Username xsi:type="xsd:string">marko</Username>
+      <Password xsi:type="xsd:string"></Password>
+      <BSLiveID xsi:type="xsd:string"></BSLiveID>
+      <BSLivePassword xsi:type="xsd:string"></BSLivePassword>
+      <compress xsi:type="xsd:boolean">false</compress>
+    </urn:GetSessionHandle>
+  </soapenv:Body>
+</soapenv:Envelope>
