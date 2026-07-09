@@ -3,6 +3,7 @@ export type UserRole = "admin" | "store";
 export type Store = {
   id: string;
   name: string;
+  biznisoft_storage_id?: number | null;
   latitude: number | null;
   longitude: number | null;
   address: string | null;
@@ -195,4 +196,97 @@ export type BizniSoftSaleActionWithArticle = BizniSoftSaleAction & {
   article_cat_no: string | null;
   article_unit: string | null;
   article_raw: Record<string, unknown> | null;
+};
+
+export type BizniSoftPriceChangeStatus = "new" | "task_created" | "ignored";
+
+export type BizniSoftPriceChange = {
+  id: string;
+  change_date: string;
+  detected_at: string;
+  storage_key: string;
+  storage_id: number | null;
+  article_id: number;
+  name: string | null;
+  barcode: string | null;
+  old_retail_price: number | null;
+  new_retail_price: number | null;
+  old_wholesale_price: number | null;
+  new_wholesale_price: number | null;
+  amount: number | null;
+  old_price_with_vat: number | null;
+  new_price_with_vat: number | null;
+  old_price_without_vat: number | null;
+  new_price_without_vat: number | null;
+  old_basic_price_with_vat: number | null;
+  new_basic_price_with_vat: number | null;
+  old_action_valid_from: string | null;
+  new_action_valid_from: string | null;
+  old_action_valid_to: string | null;
+  new_action_valid_to: string | null;
+  article_modify_time: string | null;
+  status: BizniSoftPriceChangeStatus;
+  task_created: boolean;
+  task_created_at: string | null;
+  ignored_at: string | null;
+  raw_old: Record<string, unknown>;
+  raw_new: Record<string, unknown>;
+  source_key: string;
+  created_at: string;
+};
+
+export type BizniSoftPriceChangeWithArticle = BizniSoftPriceChange & {
+  article_name: string | null;
+  article_barcode: string | null;
+  article_code: string | null;
+};
+
+export type ReturnProposalStatus = "draft" | "submitted" | "reviewed" | "completed" | "cancelled";
+
+export type ReturnProposal = {
+  id: string;
+  store_id: string;
+  status: ReturnProposalStatus;
+  return_date: string | null;
+  note: string | null;
+  partner_id: number | null;
+  partner_name: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+  submitted_at: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  completed_at: string | null;
+  cancelled_at: string | null;
+  created_at: string;
+  updated_at: string;
+  stores?: Pick<Store, "id" | "name"> | null;
+  profiles?: Pick<Profile, "email"> | null;
+  return_proposal_items?: ReturnProposalItem[];
+};
+
+export type ReturnProposalItem = {
+  id: string;
+  proposal_id: string;
+  article_id: number;
+  article_name: string;
+  barcode: string | null;
+  unit: string | null;
+  quantity: number;
+  reason: string | null;
+  note: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+  raw_article: Record<string, unknown>;
+};
+
+export type ArticleLookupItem = {
+  article_id: number;
+  name: string;
+  barcode: string | null;
+  unit: string | null;
+  storage_id: number | null;
+  raw?: Record<string, unknown>;
 };

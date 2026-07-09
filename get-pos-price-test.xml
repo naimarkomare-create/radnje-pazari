@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+                  xmlns:urn="urn:BSWebSericeIntf-IBSWebService"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <urn:GetItem>
+      <SessionHandle xsi:type="xsd:string">{4D552654-C843-4A52-8D7D-738D1D6DC93E}</SessionHandle>
+      <sItemType xsi:type="xsd:string">qtArticlePriceForPOS</sItemType>
+      <JSONGetItemRequest xsi:type="xsd:string">{"StorageID":1,"Date":"2026-06-15","ArticleID":27572}</JSONGetItemRequest>
+    </urn:GetItem>
+  </soapenv:Body>
+</soapenv:Envelope>

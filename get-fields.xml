@@ -6,7 +6,7 @@
   <soapenv:Header/>
   <soapenv:Body>
     <urn:GetJSONFieldsDescription>
-      <sItemType xsi:type="xsd:string">itSaleActions</sItemType>
+      <sItemType xsi:type="xsd:string">itArticlesOnStock</sItemType>
       <English xsi:type="xsd:boolean">false</English>
     </urn:GetJSONFieldsDescription>
   </soapenv:Body>

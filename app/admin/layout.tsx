@@ -11,7 +11,9 @@ const navigation: DashboardNavItem[] = [
   { href: "/admin/kontrola-police", label: "Kontrola voća i povrća" },
   { href: "/admin/mapa", label: "Mapa" },
   { href: "/admin/zadaci", label: "Pošalji zadatak" },
-  { href: "/admin/biznisoft-akcije", label: "BizniSoft akcije" }
+  { href: "/admin/biznisoft-akcije", label: "BizniSoft akcije" },
+  { href: "/admin/biznisoft-promene-cena", label: "Promene cena" },
+  { href: "/admin/povrati", label: "Najave povrata" }
 ];
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {

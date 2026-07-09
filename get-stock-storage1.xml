@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+                  xmlns:urn="urn:BSWebSericeIntf-IBSWebService"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <urn:GetItems>
+      <SessionHandle xsi:type="xsd:string">{4D552654-C843-4A52-8D7D-738D1D6DC93E}</SessionHandle>
+      <sItemType xsi:type="xsd:string">itArticlesOnStock</sItemType>
+      <JSONGetItemsRequest xsi:type="xsd:string">{"StorageID":1,"xsicMobSortOnly":false,"xsicNotBookedInvoices":false,"xsicChangesFromDate":"2000-01-01 00:00:00"}</JSONGetItemsRequest>
+      <limit xsi:type="xsd:int">20000</limit>
+    </urn:GetItems>
+  </soapenv:Body>
+</soapenv:Envelope>

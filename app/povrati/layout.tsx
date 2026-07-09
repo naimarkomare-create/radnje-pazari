@@ -11,15 +11,11 @@ const navigation: DashboardNavItem[] = [
   { href: "/store/moji-unosi", label: "Moji unosi" }
 ];
 
-export default async function StoreLayout({ children }: { children: React.ReactNode }) {
+export default async function PovratiLayout({ children }: { children: React.ReactNode }) {
   const profile = await requireStore();
 
   return (
-    <DashboardShell
-      navigation={navigation}
-      subtitle="Korisnik radnje"
-      title={profile.stores?.name ?? "Radnja"}
-    >
+    <DashboardShell navigation={navigation} subtitle="Korisnik radnje" title={profile.stores?.name ?? "Radnja"}>
       {children}
     </DashboardShell>
   );

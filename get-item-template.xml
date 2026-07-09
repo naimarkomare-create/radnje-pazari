@@ -5,8 +5,8 @@
                   xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <soapenv:Header/>
   <soapenv:Body>
-    <urn:GetJSONGetItemsRequest>
-      <sItemType xsi:type="xsd:string">itArticlesOnStock</sItemType>
-    </urn:GetJSONGetItemsRequest>
+    <urn:GetJSONGetItemRequest>
+      <sItemType xsi:type="xsd:string">qtArticlePriceForPOS</sItemType>
+    </urn:GetJSONGetItemRequest>
   </soapenv:Body>
 </soapenv:Envelope>

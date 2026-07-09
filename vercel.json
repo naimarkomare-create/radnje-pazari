@@ -3,6 +3,10 @@
     {
       "path": "/api/cleanup-shelf-photos",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/biznisoft-stock-price-sync",
+      "schedule": "0 5,7,9,11,13,15 * * *"
     }
   ]
 }
