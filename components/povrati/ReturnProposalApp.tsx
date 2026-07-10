@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BarcodeScanner } from "@/components/povrati/BarcodeScanner";
 import type { ArticleLookupItem, ReturnProposal, ReturnProposalItem } from "@/lib/types";
 
 const reasons = ["Oštećeno", "Istek roka", "Višak", "Pogrešna isporuka", "Drugo"];
@@ -10,11 +9,9 @@ export function ReturnProposalApp({ initialProposals }: { initialProposals: Retu
   const [proposals, setProposals] = useState(initialProposals);
   const [activeProposal, setActiveProposal] = useState<ReturnProposal | null>(initialProposals[0] ?? null);
   const [selectedArticle, setSelectedArticle] = useState<ArticleLookupItem | null>(null);
-  const [scannedBarcode, setScannedBarcode] = useState("");
+  const [articles, setArticles] = useState<ArticleLookupItem[]>([]);
+  const [lookupValue, setLookupValue] = useState("");
   const [lookupLoading, setLookupLoading] = useState(false);
-  const [lookupError, setLookupError] = useState("");
-  const [results, setResults] = useState<ArticleLookupItem[]>([]);
-  const [manual, setManual] = useState("");
   const [quantity, setQuantity] = useState("");
   const [reason, setReason] = useState("");
   const [note, setNote] = useState("");
@@ -22,15 +19,13 @@ export function ReturnProposalApp({ initialProposals }: { initialProposals: Retu
   const [editQuantity, setEditQuantity] = useState("");
   const [editReason, setEditReason] = useState("");
   const [editNote, setEditNote] = useState("");
-  const quantityInputRef = useRef<HTMLInputElement | null>(null);
-  const scannerLockedRef = useRef(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const lookupInputRef = useRef<HTMLInputElement | null>(null);
+  const quantityInputRef = useRef<HTMLInputElement | null>(null);
   const editable = activeProposal ? ["draft", "submitted"].includes(activeProposal.status) : false;
-  const scannerLocked = Boolean(selectedArticle || scannedBarcode || lookupLoading);
   const items = useMemo(() => activeProposal?.return_proposal_items ?? [], [activeProposal]);
-
-  scannerLockedRef.current = scannerLocked;
+  const visibleItems = items.slice(0, 50);
 
   useEffect(() => {
     if (!activeProposal && proposals.length > 0) setActiveProposal(proposals[0]);
@@ -39,6 +34,12 @@ export function ReturnProposalApp({ initialProposals }: { initialProposals: Retu
   useEffect(() => {
     if (selectedArticle) {
       setTimeout(() => quantityInputRef.current?.focus(), 50);
+    }
+  }, [selectedArticle]);
+
+  useEffect(() => {
+    if (!selectedArticle) {
+      setTimeout(() => lookupInputRef.current?.focus(), 50);
     }
   }, [selectedArticle]);
 
@@ -59,6 +60,7 @@ export function ReturnProposalApp({ initialProposals }: { initialProposals: Retu
     setProposals((current) => [data.proposal, ...current]);
     setActiveProposal(data.proposal);
     setMessage("Nova najava je otvorena.");
+    clearSelectedArticle();
   }
 
   async function openProposal(id: string) {
@@ -72,97 +74,88 @@ export function ReturnProposalApp({ initialProposals }: { initialProposals: Retu
     }
 
     setActiveProposal(data.proposal);
-    clearScannedArticle();
+    clearSelectedArticle();
   }
 
-  async function handleDetectedBarcode(barcode: string) {
-    if (scannerLockedRef.current) return;
+  async function lookupArticle() {
+    const value = lookupValue.trim();
+    if (!value || selectedArticle || lookupLoading) return;
 
-    scannerLockedRef.current = true;
-    setScannedBarcode(barcode);
     setLookupLoading(true);
-    setLookupError("");
     setError(null);
     setMessage(null);
+    setArticles([]);
 
     try {
-      const response = await fetch(`/api/articles/lookup?barcode=${encodeURIComponent(barcode)}`);
-      const data = await response.json();
+      let result = await fetchLookup(`barcode=${encodeURIComponent(value)}`);
 
-      if (!response.ok) {
-        setLookupError(data.error ?? "Pretraga nije uspela.");
+      if (!result.article && result.articles.length === 0 && /^\d+$/.test(value)) {
+        result = await fetchLookup(`article_id=${encodeURIComponent(value)}`);
+      }
+
+      if (!result.article && result.articles.length === 0 && !/^\d+$/.test(value)) {
+        result = await fetchLookup(`q=${encodeURIComponent(value)}`);
+      }
+
+      if (result.error) {
+        setError(result.error);
         return;
       }
 
-      applyLookupResult(normalizeLookupItems(data), barcode);
+      if (result.article) {
+        selectArticle(result.article);
+        return;
+      }
+
+      if (result.articles.length === 1) {
+        selectArticle(result.articles[0]);
+        return;
+      }
+
+      if (result.articles.length > 1) {
+        setArticles(result.articles);
+        return;
+      }
+
+      setError(`Artikal nije pronađen za unos: ${value}`);
     } catch {
-      setLookupError("Pretraga nije uspela.");
+      setError("Pretraga nije uspela.");
     } finally {
       setLookupLoading(false);
     }
   }
 
-  async function manualSearch() {
-    const value = manual.trim();
-    if (!value || scannerLockedRef.current) return;
+  async function fetchLookup(query: string): Promise<{ article: ArticleLookupItem | null; articles: ArticleLookupItem[]; error: string | null }> {
+    const response = await fetch(`/api/articles/lookup?${query}`);
+    const data = await response.json();
 
-    scannerLockedRef.current = true;
-    const params = /^\d+$/.test(value) ? `article_id=${encodeURIComponent(value)}` : `q=${encodeURIComponent(value)}`;
-    setScannedBarcode(value);
-    setLookupLoading(true);
-    setLookupError("");
-    setError(null);
-    setMessage(null);
-
-    try {
-      const response = await fetch(`/api/articles/lookup?${params}`);
-      const data = await response.json();
-
-      if (!response.ok) {
-        setLookupError(data.error ?? "Pretraga nije uspela.");
-        return;
-      }
-
-      applyLookupResult(normalizeLookupItems(data), value);
-    } catch {
-      setLookupError("Pretraga nije uspela.");
-    } finally {
-      setLookupLoading(false);
-    }
-  }
-
-  function applyLookupResult(lookupItems: ArticleLookupItem[], searchedValue: string) {
-    setResults(lookupItems);
-
-    if (lookupItems.length === 1) {
-      setSelectedArticle(lookupItems[0]);
-      setQuantity("");
-      setLookupError("");
-      return;
+    if (!response.ok) {
+      return { article: null, articles: [], error: data.error ?? "Pretraga nije uspela." };
     }
 
-    if (lookupItems.length === 0) {
-      setSelectedArticle(null);
-      setLookupError(`Artikal nije pronađen za barkod: ${searchedValue}`);
-    }
+    return {
+      article: data.article ?? null,
+      articles: Array.isArray(data.articles) ? data.articles : Array.isArray(data.items) ? data.items : [],
+      error: data.error ?? null
+    };
   }
 
   function selectArticle(article: ArticleLookupItem) {
     setSelectedArticle(article);
-    setLookupError("");
+    setArticles([]);
     setQuantity("");
-  }
-
-  function clearScannedArticle() {
-    scannerLockedRef.current = false;
-    setSelectedArticle(null);
-    setScannedBarcode("");
-    setQuantity("");
-    setLookupError("");
-    setLookupLoading(false);
-    setResults([]);
     setReason("");
     setNote("");
+    setError(null);
+  }
+
+  function clearSelectedArticle() {
+    setSelectedArticle(null);
+    setArticles([]);
+    setQuantity("");
+    setReason("");
+    setNote("");
+    setError(null);
   }
 
   async function addItem() {
@@ -205,8 +198,8 @@ export function ReturnProposalApp({ initialProposals }: { initialProposals: Retu
     setActiveProposal(nextProposal);
     setProposals((current) => current.map((proposal) => (proposal.id === nextProposal.id ? nextProposal : proposal)));
     setMessage(`Dodato: ${selectedArticle.name} x ${parsedQuantity}`);
-    clearScannedArticle();
-    setManual("");
+    setLookupValue("");
+    clearSelectedArticle();
   }
 
   async function deleteItem(item: ReturnProposalItem) {
@@ -274,7 +267,7 @@ export function ReturnProposalApp({ initialProposals }: { initialProposals: Retu
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-slate-950">Najava povrata</h1>
-            <p className="text-sm text-slate-600">Scan → količina → Dodaj → sledeći scan.</p>
+            <p className="text-sm text-slate-600">Šifra/barkod → količina → Dodaj → sledeći artikal.</p>
           </div>
           <button className="button-primary" onClick={createProposal} type="button">
             Nova najava
@@ -317,105 +310,107 @@ export function ReturnProposalApp({ initialProposals }: { initialProposals: Retu
           </div>
 
           {editable ? (
-            <>
-              <BarcodeScanner onDetected={handleDetectedBarcode} />
-
-              <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+            <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                <label className="field">
+                  <span className="label">Šifra ili barkod artikla</span>
                   <input
                     className="input"
-                    disabled={scannerLocked}
-                    onChange={(event) => setManual(event.target.value)}
-                    placeholder="Barkod, šifra ili naziv"
+                    disabled={Boolean(selectedArticle) || lookupLoading}
+                    onChange={(event) => setLookupValue(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        lookupArticle();
+                      }
+                    }}
+                    placeholder="Unesite barkod ili šifru"
+                    ref={lookupInputRef}
                     type="text"
-                    value={manual}
+                    value={lookupValue}
                   />
-                  <button className="button-secondary" disabled={scannerLocked} onClick={manualSearch} type="button">
-                    Pronađi
-                  </button>
+                </label>
+                <button className="button-secondary self-end" disabled={Boolean(selectedArticle) || lookupLoading} onClick={lookupArticle} type="button">
+                  {lookupLoading ? "Tražim..." : "Pronađi"}
+                </button>
+              </div>
+
+              {articles.length > 1 ? (
+                <div className="space-y-2">
+                  {articles.map((article) => (
+                    <button
+                      className="w-full rounded-md border border-slate-200 bg-white p-3 text-left text-sm hover:border-leaf"
+                      key={`${article.article_id}-${article.barcode ?? ""}`}
+                      onClick={() => selectArticle(article)}
+                      type="button"
+                    >
+                      <strong>{article.name}</strong>
+                      <br />
+                      Šifra: {article.article_id} | Barkod: {article.barcode ?? "-"}
+                    </button>
+                  ))}
                 </div>
+              ) : null}
 
-                {(scannedBarcode || lookupLoading || lookupError || selectedArticle || results.length > 0) ? (
-                  <div className="space-y-3 rounded-md border border-leaf/30 bg-leaf/5 p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="space-y-1">
-                        {scannedBarcode ? <p className="text-sm font-semibold text-slate-700">Skenirano: {scannedBarcode}</p> : null}
-                        {lookupLoading ? <p className="text-sm font-semibold text-amber-700">Tražim artikal...</p> : null}
-                        {lookupError ? <p className="text-sm font-semibold text-red-700">{lookupError}</p> : null}
-                      </div>
-                      <button
-                        aria-label="Poništi skenirani artikal"
-                        className="flex size-10 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white text-xl font-bold text-slate-700"
-                        onClick={clearScannedArticle}
-                        type="button"
-                      >
-                        ×
-                      </button>
+              {selectedArticle ? (
+                <div className="space-y-3 rounded-md border border-leaf/30 bg-leaf/5 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-bold text-slate-950">{selectedArticle.name}</p>
+                      <p className="text-sm text-slate-600">
+                        Šifra: {selectedArticle.article_id} | Barkod: {selectedArticle.barcode ?? "-"} | Jed. mere: {selectedArticle.unit ?? "-"}
+                      </p>
                     </div>
-
-                    {results.length > 1 && !selectedArticle ? (
-                      <div className="space-y-2">
-                        {results.map((article) => (
-                          <button
-                            className="w-full rounded-md border border-slate-200 bg-white p-3 text-left text-sm hover:border-leaf"
-                            key={`${article.article_id}-${article.barcode ?? ""}`}
-                            onClick={() => selectArticle(article)}
-                            type="button"
-                          >
-                            <strong>{article.name}</strong>
-                            <br />
-                            Šifra: {article.article_id} | Barkod: {article.barcode ?? "-"}
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-
-                    {selectedArticle ? (
-                      <div className="space-y-3">
-                        <div>
-                          <p className="font-bold text-slate-950">{selectedArticle.name}</p>
-                          <p className="text-sm text-slate-600">
-                            Šifra: {selectedArticle.article_id} | Barkod: {selectedArticle.barcode ?? "-"} | Jed. mere: {selectedArticle.unit ?? "-"}
-                          </p>
-                        </div>
-                        <input
-                          className="input text-xl font-bold"
-                          inputMode="decimal"
-                          onChange={(event) => setQuantity(event.target.value)}
-                          placeholder="Količina"
-                          ref={quantityInputRef}
-                          type="number"
-                          value={quantity}
-                        />
-                        <select className="input" onChange={(event) => setReason(event.target.value)} value={reason}>
-                          <option value="">Razlog povrata</option>
-                          {reasons.map((item) => (
-                            <option key={item} value={item}>
-                              {item}
-                            </option>
-                          ))}
-                        </select>
-                        <textarea className="input min-h-20" onChange={(event) => setNote(event.target.value)} placeholder="Napomena" value={note} />
-                        <div className="grid grid-cols-[1fr_auto] gap-2">
-                          <button className="button-primary" onClick={addItem} type="button">
-                            Dodaj
-                          </button>
-                          <button className="button-secondary min-w-12 px-3 text-xl" onClick={clearScannedArticle} type="button">
-                            ×
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
+                    <button
+                      aria-label="Poništi izabrani artikal"
+                      className="flex size-10 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white text-xl font-bold text-slate-700"
+                      onClick={clearSelectedArticle}
+                      type="button"
+                    >
+                      ×
+                    </button>
                   </div>
-                ) : null}
-              </section>
-            </>
+                  <input
+                    className="input text-xl font-bold"
+                    inputMode="decimal"
+                    onChange={(event) => setQuantity(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        addItem();
+                      }
+                    }}
+                    placeholder="Količina"
+                    ref={quantityInputRef}
+                    type="number"
+                    value={quantity}
+                  />
+                  <select className="input" onChange={(event) => setReason(event.target.value)} value={reason}>
+                    <option value="">Razlog povrata</option>
+                    {reasons.map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                  </select>
+                  <textarea className="input min-h-20" onChange={(event) => setNote(event.target.value)} placeholder="Napomena" value={note} />
+                  <div className="grid grid-cols-[1fr_auto] gap-2">
+                    <button className="button-primary" onClick={addItem} type="button">
+                      Dodaj
+                    </button>
+                    <button className="button-secondary min-w-12 px-3 text-xl" onClick={clearSelectedArticle} type="button">
+                      ×
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </section>
           ) : null}
 
           <section className="space-y-2 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="font-bold text-slate-950">Stavke</h2>
             {items.length === 0 ? <p className="text-sm text-slate-600">Nema stavki.</p> : null}
-            {items.map((item) => (
+            {visibleItems.map((item) => (
               <article className="rounded-md border border-slate-200 p-3" key={item.id}>
                 {editingItemId === item.id ? (
                   <div className="space-y-2">
@@ -462,6 +457,9 @@ export function ReturnProposalApp({ initialProposals }: { initialProposals: Retu
                 )}
               </article>
             ))}
+            {items.length > visibleItems.length ? (
+              <p className="text-sm text-slate-500">Prikazano je poslednjih 50 stavki od ukupno {items.length}.</p>
+            ) : null}
           </section>
         </section>
       ) : (
@@ -469,22 +467,6 @@ export function ReturnProposalApp({ initialProposals }: { initialProposals: Retu
       )}
     </div>
   );
-}
-
-function normalizeLookupItems(data: unknown): ArticleLookupItem[] {
-  if (Array.isArray(data)) return data as ArticleLookupItem[];
-  if (!data || typeof data !== "object") return [];
-
-  const payload = data as {
-    article?: ArticleLookupItem | null;
-    articles?: ArticleLookupItem[];
-    items?: ArticleLookupItem[];
-  };
-
-  if (payload.article) return [payload.article];
-  if (Array.isArray(payload.articles)) return payload.articles;
-  if (Array.isArray(payload.items)) return payload.items;
-  return [];
 }
 
 function formatDateTime(value: string) {

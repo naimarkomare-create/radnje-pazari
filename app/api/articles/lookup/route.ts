@@ -5,6 +5,12 @@ import type { ArticleLookupItem } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
+type LookupResponse = {
+  article: ArticleLookupItem | null;
+  articles: ArticleLookupItem[];
+  error: string | null;
+};
+
 export async function GET(request: NextRequest) {
   const profile = await getCurrentProfile();
 
@@ -16,55 +22,65 @@ export async function GET(request: NextRequest) {
   const barcode = searchParams.get("barcode")?.trim();
   const articleId = searchParams.get("article_id")?.trim();
   const q = searchParams.get("q")?.trim();
-  const supabase = createServiceClient();
 
-  if (barcode) {
-    const { data, error } = await supabase
-      .from("biznisoft_stock_price_current")
-      .select("article_id, name, barcode, unit, storage_id, raw, last_seen_at")
-      .eq("barcode", barcode)
-      .order("last_seen_at", { ascending: false })
-      .limit(20);
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ items: dedupeArticles(data ?? []) });
-  }
-
-  if (articleId) {
-    const numericArticleId = Number(articleId);
-    if (!Number.isInteger(numericArticleId)) {
-      return NextResponse.json({ error: "ArticleID nije ispravan." }, { status: 400 });
+  try {
+    if (barcode) {
+      const articles = await lookupByField("barcode", barcode);
+      return jsonResult(articles[0] ?? null, articles);
     }
 
-    const { data, error } = await supabase
-      .from("biznisoft_stock_price_current")
-      .select("article_id, name, barcode, unit, storage_id, raw, last_seen_at")
-      .eq("article_id", numericArticleId)
-      .order("last_seen_at", { ascending: false })
-      .limit(20);
+    if (articleId) {
+      const numericArticleId = Number(articleId);
+      if (!Number.isInteger(numericArticleId)) return jsonResult(null, [], "ArticleID nije ispravan.");
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ items: dedupeArticles(data ?? []) });
+      const articles = await lookupByField("article_id", numericArticleId);
+      return jsonResult(articles[0] ?? null, articles);
+    }
+
+    if (q && q.length >= 2) {
+      const articles = await searchArticles(q);
+      return jsonResult(articles.length === 1 ? articles[0] : null, articles);
+    }
+
+    return jsonResult(null, []);
+  } catch (error) {
+    return jsonResult(null, [], error instanceof Error ? error.message : "Pretraga nije uspela.");
   }
+}
 
-  if (q && q.length >= 2) {
-    const maybeId = Number(q);
-    let query = supabase
-      .from("biznisoft_stock_price_current")
-      .select("article_id, name, barcode, unit, storage_id, raw, last_seen_at")
-      .order("last_seen_at", { ascending: false })
-      .limit(80);
+async function lookupByField(field: "barcode" | "article_id", value: string | number) {
+  const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from("biznisoft_stock_price_current")
+    .select("article_id, name, barcode, unit, storage_id, raw, last_seen_at")
+    .eq(field, value)
+    .order("last_seen_at", { ascending: false })
+    .limit(20);
 
-    query = Number.isInteger(maybeId)
-      ? query.or(`name.ilike.%${escapeLike(q)}%,barcode.ilike.%${escapeLike(q)}%,article_id.eq.${maybeId}`)
-      : query.or(`name.ilike.%${escapeLike(q)}%,barcode.ilike.%${escapeLike(q)}%`);
+  if (error) throw new Error(error.message);
+  return dedupeArticles(data ?? []);
+}
 
-    const { data, error } = await query;
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ items: dedupeArticles(data ?? []).slice(0, 20) });
-  }
+async function searchArticles(q: string) {
+  const supabase = createServiceClient();
+  const maybeId = Number(q);
+  let query = supabase
+    .from("biznisoft_stock_price_current")
+    .select("article_id, name, barcode, unit, storage_id, raw, last_seen_at")
+    .order("last_seen_at", { ascending: false })
+    .limit(80);
 
-  return NextResponse.json({ items: [] });
+  query = Number.isInteger(maybeId)
+    ? query.or(`name.ilike.%${escapeLike(q)}%,barcode.ilike.%${escapeLike(q)}%,article_id.eq.${maybeId}`)
+    : query.or(`name.ilike.%${escapeLike(q)}%,barcode.ilike.%${escapeLike(q)}%`);
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return dedupeArticles(data ?? []).slice(0, 20);
+}
+
+function jsonResult(article: ArticleLookupItem | null, articles: ArticleLookupItem[], error: string | null = null) {
+  return NextResponse.json({ article, articles, error } satisfies LookupResponse);
 }
 
 function dedupeArticles(rows: Array<Record<string, unknown>>): ArticleLookupItem[] {
