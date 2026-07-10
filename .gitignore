@@ -6,3 +6,5 @@ node_modules/
 *.local.txt
 biznisoft-output/*
 !biznisoft-output/.gitkeep
+
+.vercel

@@ -1,60 +1,86 @@
 "use client";
 
-import { BrowserMultiFormatReader } from "@zxing/browser";
+import { BrowserMultiFormatReader, type IScannerControls } from "@zxing/browser";
 import { useEffect, useRef, useState } from "react";
 
 export function BarcodeScanner({ onDetected }: { onDetected: (barcode: string) => void }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const controlsRef = useRef<{ stop: () => void } | null>(null);
+  const controlsRef = useRef<IScannerControls | null>(null);
+  const readerRef = useRef<BrowserMultiFormatReader | null>(null);
   const lastScanRef = useRef<{ value: string; time: number }>({ value: "", time: 0 });
+  const startingRef = useRef(false);
   const [running, setRunning] = useState(false);
+  const [manualBarcode, setManualBarcode] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    return () => {
-      controlsRef.current?.stop();
-      controlsRef.current = null;
-    };
+    return () => stop();
   }, []);
 
   async function start() {
+    if (running || startingRef.current) return;
+
     setError(null);
+    startingRef.current = true;
 
     try {
-      const reader = new BrowserMultiFormatReader();
-      const devices = await BrowserMultiFormatReader.listVideoInputDevices();
-      const backCamera =
-        devices.find((device) => /back|rear|environment/i.test(device.label)) ??
-        devices[devices.length - 1] ??
-        devices[0];
-
-      if (!backCamera || !videoRef.current) {
-        setError("Kamera nije pronađena. Unesite barkod ručno.");
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setError("Kamera nije podržana u ovom browseru. Unesi barkod ručno.");
         return;
       }
 
-      controlsRef.current = await reader.decodeFromVideoDevice(backCamera.deviceId, videoRef.current, (result) => {
-        if (!result) return;
+      if (!videoRef.current) return;
 
-        const value = result.getText().trim();
-        const now = Date.now();
+      readerRef.current = new BrowserMultiFormatReader();
+      controlsRef.current = await readerRef.current.decodeFromConstraints(
+        {
+          audio: false,
+          video: {
+            facingMode: { ideal: "environment" }
+          }
+        },
+        videoRef.current,
+        (result) => {
+          if (!result) return;
 
-        if (lastScanRef.current.value === value && now - lastScanRef.current.time < 1500) return;
+          const barcode = result.getText().trim();
+          const now = Date.now();
 
-        lastScanRef.current = { value, time: now };
-        onDetected(value);
-      });
+          if (!barcode) return;
+          if (lastScanRef.current.value === barcode && now - lastScanRef.current.time < 1500) return;
+
+          lastScanRef.current = { value: barcode, time: now };
+          onDetected(barcode);
+        }
+      );
       setRunning(true);
     } catch {
-      setError("Kamera nije dostupna. Unesite barkod ručno.");
-      setRunning(false);
+      stop();
+      setError("Kamera nije dostupna ili dozvola nije odobrena. Unesi barkod ručno.");
+    } finally {
+      startingRef.current = false;
     }
   }
 
   function stop() {
     controlsRef.current?.stop();
     controlsRef.current = null;
+    readerRef.current = null;
     setRunning(false);
+
+    const stream = videoRef.current?.srcObject;
+    if (stream instanceof MediaStream) {
+      stream.getTracks().forEach((track) => track.stop());
+      videoRef.current!.srcObject = null;
+    }
+  }
+
+  function submitManual() {
+    const barcode = manualBarcode.trim();
+    if (!barcode) return;
+
+    onDetected(barcode);
+    setManualBarcode("");
   }
 
   return (
@@ -62,20 +88,39 @@ export function BarcodeScanner({ onDetected }: { onDetected: (barcode: string) =
       <div className="flex items-center justify-between gap-3">
         <div>
           <h2 className="font-bold text-slate-950">Kamera scanner</h2>
-          <p className="text-xs text-slate-500">Scanner ostaje uključen za sledeći artikal.</p>
+          <p className="text-xs text-slate-500">Kamera ostaje spremna za sledeći barkod.</p>
         </div>
         {running ? (
           <button className="button-secondary" onClick={stop} type="button">
-            Stop
+            Zaustavi kameru
           </button>
         ) : (
           <button className="button-primary" onClick={start} type="button">
-            Start
+            Pokreni kameru
           </button>
         )}
       </div>
+
       <video className="aspect-video w-full rounded-md bg-slate-950 object-cover" muted playsInline ref={videoRef} />
+
       {error ? <p className="text-sm font-medium text-red-700">{error}</p> : null}
+
+      <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+        <input
+          className="input"
+          inputMode="numeric"
+          onChange={(event) => setManualBarcode(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") submitManual();
+          }}
+          placeholder="Unesi barkod ručno"
+          type="text"
+          value={manualBarcode}
+        />
+        <button className="button-secondary" onClick={submitManual} type="button">
+          Pronađi
+        </button>
+      </div>
     </section>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BarcodeScanner } from "@/components/povrati/BarcodeScanner";
 import type { ArticleLookupItem, ReturnProposal, ReturnProposalItem } from "@/lib/types";
 
@@ -19,6 +19,7 @@ export function ReturnProposalApp({ initialProposals }: { initialProposals: Retu
   const [editQuantity, setEditQuantity] = useState("");
   const [editReason, setEditReason] = useState("");
   const [editNote, setEditNote] = useState("");
+  const quantityInputRef = useRef<HTMLInputElement | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const editable = activeProposal ? ["draft", "submitted"].includes(activeProposal.status) : false;
@@ -26,6 +27,12 @@ export function ReturnProposalApp({ initialProposals }: { initialProposals: Retu
   useEffect(() => {
     if (!activeProposal && proposals.length > 0) setActiveProposal(proposals[0]);
   }, [activeProposal, proposals]);
+
+  useEffect(() => {
+    if (selectedArticle) {
+      setTimeout(() => quantityInputRef.current?.focus(), 50);
+    }
+  }, [selectedArticle]);
 
   const items = useMemo(() => activeProposal?.return_proposal_items ?? [], [activeProposal]);
 
@@ -81,7 +88,7 @@ export function ReturnProposalApp({ initialProposals }: { initialProposals: Retu
       setMessage(`Pronađen artikal: ${items[0].name}`);
     } else if (items.length === 0) {
       setSelectedArticle(null);
-      setError("Artikal nije pronađen.");
+      setError(`Artikal nije pronađen za barkod: ${barcode}`);
     }
   }
 
@@ -295,7 +302,7 @@ export function ReturnProposalApp({ initialProposals }: { initialProposals: Retu
                         Šifra: {selectedArticle.article_id} | Barkod: {selectedArticle.barcode ?? "-"} | JM: {selectedArticle.unit ?? "-"}
                       </p>
                     </div>
-                    <input className="input text-xl font-bold" inputMode="decimal" onChange={(event) => setQuantity(event.target.value)} placeholder="Količina" type="number" value={quantity} />
+                    <input className="input text-xl font-bold" inputMode="decimal" onChange={(event) => setQuantity(event.target.value)} placeholder="Količina" ref={quantityInputRef} type="number" value={quantity} />
                     <select className="input" onChange={(event) => setReason(event.target.value)} value={reason}>
                       <option value="">Razlog povrata</option>
                       {reasons.map((item) => (
