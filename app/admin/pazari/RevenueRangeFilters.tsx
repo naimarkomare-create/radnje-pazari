@@ -20,6 +20,7 @@ export function RevenueRangeFilters({
 
   function updateFilter(key: "date_from" | "date_to" | "store_id", value: string) {
     const params = new URLSearchParams(searchParams.toString());
+    params.delete("page");
 
     if (value) params.set(key, value);
     else params.delete(key);

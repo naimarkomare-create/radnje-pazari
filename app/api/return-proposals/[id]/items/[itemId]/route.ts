@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentProfile } from "@/lib/auth";
-import { canEditReturnProposal } from "@/lib/return-proposals";
+import { getCurrentProfileWithClient } from "@/lib/auth";
+import { canEditReturnProposal, RETURN_PROPOSAL_ITEM_COLUMNS } from "@/lib/return-proposals";
 import { createClient } from "@/lib/supabase/server";
 import type { ReturnProposal } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string; itemId: string } }) {
-  const profile = await getCurrentProfile();
+  const supabase = createClient();
+  const profile = await getCurrentProfileWithClient(supabase);
 
   if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const supabase = createClient();
-  const proposal = await loadEditableProposal(params.id);
+  const proposal = await loadEditableProposal(supabase, params.id);
   if (!proposal.ok) return proposal.response;
   if (!canEditReturnProposal(profile, proposal.proposal)) return NextResponse.json({ error: "Najava nije otvorena za izmene." }, { status: 403 });
 
@@ -29,7 +29,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
   const { data: oldItem } = await supabase
     .from("return_proposal_items")
-    .select("*")
+    .select(RETURN_PROPOSAL_ITEM_COLUMNS)
     .eq("id", params.itemId)
     .eq("proposal_id", params.id)
     .single();
@@ -39,37 +39,39 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     .update(update)
     .eq("id", params.itemId)
     .eq("proposal_id", params.id)
-    .select("*")
+    .select(RETURN_PROPOSAL_ITEM_COLUMNS)
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  await supabase.from("return_proposals").update({ updated_by: profile.id }).eq("id", params.id);
-  await supabase.from("return_proposal_history").insert({
-    action: "item_updated",
-    item_id: params.itemId,
-    new_value: data,
-    old_value: oldItem ?? null,
-    proposal_id: params.id,
-    user_id: profile.id
-  });
+  await Promise.all([
+    supabase.from("return_proposals").update({ updated_by: profile.id }).eq("id", params.id),
+    supabase.from("return_proposal_history").insert({
+      action: "item_updated",
+      item_id: params.itemId,
+      new_value: data,
+      old_value: oldItem ?? null,
+      proposal_id: params.id,
+      user_id: profile.id
+    })
+  ]);
 
   return NextResponse.json({ item: data });
 }
 
 export async function DELETE(_request: NextRequest, { params }: { params: { id: string; itemId: string } }) {
-  const profile = await getCurrentProfile();
+  const supabase = createClient();
+  const profile = await getCurrentProfileWithClient(supabase);
 
   if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const supabase = createClient();
-  const proposal = await loadEditableProposal(params.id);
+  const proposal = await loadEditableProposal(supabase, params.id);
   if (!proposal.ok) return proposal.response;
   if (!canEditReturnProposal(profile, proposal.proposal)) return NextResponse.json({ error: "Najava nije otvorena za izmene." }, { status: 403 });
 
   const { data: oldItem } = await supabase
     .from("return_proposal_items")
-    .select("*")
+    .select(RETURN_PROPOSAL_ITEM_COLUMNS)
     .eq("id", params.itemId)
     .eq("proposal_id", params.id)
     .single();
@@ -82,21 +84,25 @@ export async function DELETE(_request: NextRequest, { params }: { params: { id: 
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  await supabase.from("return_proposals").update({ updated_by: profile.id }).eq("id", params.id);
-  await supabase.from("return_proposal_history").insert({
-    action: "item_deleted",
-    item_id: params.itemId,
-    old_value: oldItem ?? null,
-    proposal_id: params.id,
-    user_id: profile.id
-  });
+  await Promise.all([
+    supabase.from("return_proposals").update({ updated_by: profile.id }).eq("id", params.id),
+    supabase.from("return_proposal_history").insert({
+      action: "item_deleted",
+      item_id: params.itemId,
+      old_value: oldItem ?? null,
+      proposal_id: params.id,
+      user_id: profile.id
+    })
+  ]);
 
   return NextResponse.json({ ok: true });
 }
 
-async function loadEditableProposal(id: string): Promise<{ ok: true; proposal: ReturnProposal } | { ok: false; response: NextResponse }> {
-  const supabase = createClient();
-  const { data, error } = await supabase.from("return_proposals").select("*").eq("id", id).single();
+async function loadEditableProposal(
+  supabase: ReturnType<typeof createClient>,
+  id: string
+): Promise<{ ok: true; proposal: ReturnProposal } | { ok: false; response: NextResponse }> {
+  const { data, error } = await supabase.from("return_proposals").select("id, store_id, status").eq("id", id).single();
 
   if (error || !data) {
     return { ok: false, response: NextResponse.json({ error: error?.message ?? "Najava nije pronađena." }, { status: 404 }) };

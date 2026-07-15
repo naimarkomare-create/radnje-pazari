@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { BizniSoftActionButtons } from "@/app/admin/biznisoft-akcije/BizniSoftActionButtons";
 import { PageHeader } from "@/components/PageHeader";
+import { Pagination } from "@/components/Pagination";
 import { requireAdmin } from "@/lib/auth";
 import {
   actionStatusFromDates,
   formatDateTime,
-  getSaleActionName,
-  groupSaleActions,
+  saleActionGroupKeyFromParts,
   statusClass,
   storageIdFromStoreName,
   storageLabel
@@ -14,49 +14,80 @@ import {
 import { todayInBelgrade } from "@/lib/date";
 import { PRODUCE_STORE_NAMES, sortProduceStores } from "@/lib/produce";
 import { createClient } from "@/lib/supabase/server";
-import type { BizniSoftSaleActionWithArticle, Store } from "@/lib/types";
+import type { Store } from "@/lib/types";
 
-export default async function AdminBizniSoftActionsPage({
-  searchParams
-}: {
-  searchParams: { storage_scope?: string; storage_id?: string; active_today?: string; loyalty?: string; show_finished?: string };
-}) {
+type PageSearchParams = {
+  active_today?: string;
+  loyalty?: string;
+  page?: string;
+  show_finished?: string;
+  storage_id?: string;
+  storage_scope?: string;
+};
+
+type SaleActionGroupSummary = {
+  action_type: number;
+  storage_id: number | null;
+  from_chapter: string | null;
+  chapter_to: string | null;
+  loyalty_level: number;
+  priority_level: number;
+  sale_action_name: string | null;
+  item_count: number;
+  article_count: number;
+  resolved_article_count: number;
+  groupKey: string;
+};
+
+const PAGE_SIZE = 20;
+
+export default async function AdminBizniSoftActionsPage({ searchParams }: { searchParams: PageSearchParams }) {
   await requireAdmin();
   const supabase = createClient();
   const today = todayInBelgrade();
-  const selectedStorageScope = typeof searchParams.storage_scope === "string" ? searchParams.storage_scope : "";
-  const selectedStorage = typeof searchParams.storage_id === "string" ? searchParams.storage_id : "";
-  const selectedLoyalty = typeof searchParams.loyalty === "string" ? searchParams.loyalty : "";
+  const selectedStorageScope = searchParams.storage_scope ?? "";
+  const selectedStorage = searchParams.storage_id ?? "";
+  const selectedLoyalty = searchParams.loyalty ?? "";
   const activeToday = searchParams.active_today === "1";
   const showFinished = searchParams.show_finished === "1";
-  const storesResult = await supabase
-    .from("stores")
-    .select("id, name, latitude, longitude, address, created_at")
-    .in("name", [...PRODUCE_STORE_NAMES]);
-  let query = supabase
-    .from("biznisoft_sale_actions_with_articles")
-    .select("*")
-    .order("from_chapter", { ascending: true, nullsFirst: false })
-    .limit(1000);
+  const page = positiveInteger(searchParams.page, 1);
 
-  if (selectedStorageScope === "global") query = query.is("storage_id", null);
-  if (selectedStorageScope === "store" && selectedStorage) query = query.eq("storage_id", Number(selectedStorage));
-  if (selectedLoyalty === "loyalty") query = query.gt("loyalty_level", 0);
-  if (selectedLoyalty === "normal") query = query.or("loyalty_level.is.null,loyalty_level.eq.0");
+  let groupsQuery = supabase
+    .from("biznisoft_sale_action_groups")
+    .select(
+      "action_type, storage_id, from_chapter, chapter_to, loyalty_level, priority_level, sale_action_name, item_count, article_count, resolved_article_count",
+      { count: "exact" }
+    )
+    .order("from_chapter", { ascending: true, nullsFirst: false });
+
+  if (selectedStorageScope === "global") groupsQuery = groupsQuery.is("storage_id", null);
+  if (selectedStorageScope === "store" && selectedStorage) groupsQuery = groupsQuery.eq("storage_id", Number(selectedStorage));
+  if (selectedLoyalty === "loyalty") groupsQuery = groupsQuery.gt("loyalty_level", 0);
+  if (selectedLoyalty === "normal") groupsQuery = groupsQuery.eq("loyalty_level", 0);
 
   if (activeToday) {
     const { start, end } = dayRange(today);
-    query = query.lte("from_chapter", end).gte("chapter_to", start);
+    groupsQuery = groupsQuery.lte("from_chapter", end).gte("chapter_to", start);
   } else if (!showFinished) {
     const { start } = dayRange(today);
-    query = query.or(`chapter_to.is.null,chapter_to.gte.${start}`);
+    groupsQuery = groupsQuery.or(`chapter_to.is.null,chapter_to.gte.${start}`);
   }
 
-  const actionsResult = await query;
-  const rows = (actionsResult.data ?? []) as unknown as BizniSoftSaleActionWithArticle[];
+  const from = (page - 1) * PAGE_SIZE;
+  const [storesResult, groupsResult] = await Promise.all([
+    supabase.from("stores").select("id, name").in("name", [...PRODUCE_STORE_NAMES]),
+    groupsQuery.range(from, from + PAGE_SIZE - 1)
+  ]);
   const stores = sortProduceStores((storesResult.data ?? []) as Store[]);
-  const groups = groupSaleActions(rows);
-  const error = storesResult.error?.message ?? actionsResult.error?.message;
+  const groups = ((groupsResult.data ?? []) as Omit<SaleActionGroupSummary, "groupKey">[]).map((group) => ({
+    ...group,
+    article_count: Number(group.article_count),
+    groupKey: saleActionGroupKeyFromParts(group),
+    item_count: Number(group.item_count),
+    resolved_article_count: Number(group.resolved_article_count)
+  }));
+  const totalCount = groupsResult.count ?? groups.length;
+  const error = storesResult.error?.message ?? groupsResult.error?.message;
 
   return (
     <>
@@ -72,7 +103,15 @@ export default async function AdminBizniSoftActionsPage({
           stores={stores}
         />
         {error ? <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
+        <p className="text-sm text-slate-600">Ukupno grupa za izabrane filtere: {totalCount}</p>
         <SaleActionGroups groups={groups} stores={stores} today={today} />
+        <Pagination
+          page={page}
+          pageSize={PAGE_SIZE}
+          pathname="/admin/biznisoft-akcije"
+          searchParams={searchParams}
+          totalCount={totalCount}
+        />
       </div>
     </>
   );
@@ -111,9 +150,7 @@ function ActionFilters({
             <option value="">Izaberite radnju</option>
             {stores.map((store) => {
               const storageId = storageIdFromStoreName(store.name);
-              if (storageId === null) return null;
-
-              return (
+              return storageId === null ? null : (
                 <option key={store.id} value={storageId}>
                   {store.name}
                 </option>
@@ -147,15 +184,7 @@ function ActionFilters({
   );
 }
 
-function SaleActionGroups({
-  groups,
-  stores,
-  today
-}: {
-  groups: ReturnType<typeof groupSaleActions>;
-  stores: Store[];
-  today: string;
-}) {
+function SaleActionGroups({ groups, stores, today }: { groups: SaleActionGroupSummary[]; stores: Store[]; today: string }) {
   if (groups.length === 0) {
     return <p className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500 shadow-sm">Nema akcija za izabrane filtere.</p>;
   }
@@ -181,16 +210,16 @@ function SaleActionGroups({
           <tbody>
             {groups.map((group) => {
               const status = actionStatusFromDates({ chapter_to: group.chapter_to, from_chapter: group.from_chapter, today });
-
               return (
                 <tr key={group.groupKey}>
                   <Td>{saleActionDisplayName(group, storesByStorageId)}</Td>
                   <Td>{storageLabel(group.storage_id, storesByStorageId)}</Td>
                   <Td>{`${formatDateTime(group.from_chapter)} - ${formatDateTime(group.chapter_to)}`}</Td>
-                  <Td>{group.rows.length}</Td>
                   <Td>
-                    <span className={statusClass(status)}>{status}</span>
+                    {group.item_count}
+                    <span className="block text-xs text-slate-500">Nazivi: {group.resolved_article_count}/{group.article_count}</span>
                   </Td>
+                  <Td><span className={statusClass(status)}>{status}</span></Td>
                   <Td>
                     <Link className="button-secondary" href={`/admin/biznisoft-akcije/${encodeURIComponent(group.groupKey)}`}>
                       Otvori akciju
@@ -206,31 +235,27 @@ function SaleActionGroups({
   );
 }
 
-function saleActionDisplayName(group: ReturnType<typeof groupSaleActions>[number], storesByStorageId: Map<number, Store>) {
-  const first = group.rows[0];
-  const rawName = first ? getSaleActionName(first) : null;
-  if (rawName) return rawName;
-
+function saleActionDisplayName(group: SaleActionGroupSummary, storesByStorageId: Map<number, Store>) {
+  if (group.sale_action_name) return group.sale_action_name;
   const base = group.loyalty_level > 0 ? "Loyalty akcija" : "Prodajna akcija";
   const period = `${formatDateTime(group.from_chapter)} - ${formatDateTime(group.chapter_to)}`;
-  const store = storageLabel(group.storage_id, storesByStorageId);
-  return `${base} | ${period} | ${store} | ${group.rows.length} artikala`;
+  return `${base} | ${period} | ${storageLabel(group.storage_id, storesByStorageId)} | ${group.item_count} artikala`;
 }
 
 function dayRange(date: string) {
-  const next = nextDate(date);
-  return {
-    end: `${next}T00:00:00+01:00`,
-    start: `${date}T00:00:00+01:00`
-  };
+  return { end: `${nextDate(date)}T00:00:00+01:00`, start: `${date}T00:00:00+01:00` };
 }
 
 function nextDate(value: string) {
   const [year, month, day] = value.split("-").map(Number);
   const date = new Date(year, month - 1, day);
   date.setDate(date.getDate() + 1);
-
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function positiveInteger(value: string | undefined, fallback: number) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function Th({ children }: { children: React.ReactNode }) {

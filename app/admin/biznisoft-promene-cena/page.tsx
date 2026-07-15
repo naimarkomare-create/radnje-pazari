@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BulkTaskButton, DetailTaskButtons, GroupTaskButton, PriceSyncButton } from "@/app/admin/biznisoft-promene-cena/PriceChangeButtons";
+import { Pagination } from "@/components/Pagination";
 import { requireAdmin } from "@/lib/auth";
 import { todayInBelgrade } from "@/lib/date";
 import { PRODUCE_STORE_NAMES, sortProduceStores } from "@/lib/produce";
@@ -8,6 +9,7 @@ import type { BizniSoftArticle, BizniSoftPriceChange, BizniSoftPriceChangeWithAr
 
 type PageSearchParams = {
   filter?: string;
+  page?: string;
   q?: string;
   storage_key?: string;
 };
@@ -27,26 +29,24 @@ const filterOptions = [
   { href: "/admin/biznisoft-promene-cena?filter=all", key: "all", label: "Sve" }
 ];
 
+const PAGE_SIZE = 50;
+
 export default async function BizniSoftPriceChangesPage({ searchParams }: { searchParams: PageSearchParams }) {
   await requireAdmin();
   const supabase = createClient();
   const today = todayInBelgrade();
   const activeFilter = searchParams.filter ?? "today";
-  const search = (searchParams.q ?? "").trim().toLowerCase();
+  const search = (searchParams.q ?? "").trim();
   const selectedStorageKey = searchParams.storage_key;
-
-  const storesResult = await supabase
-    .from("stores")
-    .select("id, name, biznisoft_storage_id, latitude, longitude, address, created_at")
-    .in("name", [...PRODUCE_STORE_NAMES]);
-  const stores = sortProduceStores((storesResult.data ?? []) as Store[]);
-  const storesByStorageId = storesByBizniSoftStorageId(stores);
+  const page = positiveInteger(searchParams.page, 1);
 
   let query = supabase
     .from("biznisoft_price_changes")
-    .select("*")
-    .order("detected_at", { ascending: false })
-    .limit(activeFilter === "all" ? 1500 : 800);
+    .select(
+      "id, change_date, detected_at, storage_key, storage_id, article_id, name, barcode, old_retail_price, new_retail_price, old_wholesale_price, new_wholesale_price, amount, status, task_created, task_created_at, ignored_at, source_key, created_at",
+      { count: "exact" }
+    )
+    .order("detected_at", { ascending: false });
 
   if (activeFilter === "today") query = query.eq("change_date", today);
   if (activeFilter === "7d") query = query.gte("change_date", dateDaysAgo(6));
@@ -54,19 +54,32 @@ export default async function BizniSoftPriceChangesPage({ searchParams }: { sear
   if (activeFilter === "task_created") query = query.eq("status", "task_created");
   if (activeFilter === "ignored") query = query.eq("status", "ignored");
   if (selectedStorageKey) query = query.eq("storage_key", selectedStorageKey);
+  if (search) {
+    const safeSearch = search.replace(/[%_,()]/g, "").slice(0, 80);
+    const articleId = Number(safeSearch);
+    query = Number.isInteger(articleId)
+      ? query.or(`name.ilike.%${safeSearch}%,barcode.ilike.%${safeSearch}%,article_id.eq.${articleId}`)
+      : query.or(`name.ilike.%${safeSearch}%,barcode.ilike.%${safeSearch}%`);
+  }
 
-  const changesResult = await query;
+  const from = (page - 1) * PAGE_SIZE;
+  const [storesResult, changesResult, summary, lastCheck] = await Promise.all([
+    supabase.from("stores").select("id, name, biznisoft_storage_id").in("name", [...PRODUCE_STORE_NAMES]),
+    query.range(from, from + PAGE_SIZE - 1),
+    fetchSummary(supabase, today),
+    fetchLastCheck(supabase)
+  ]);
   if (changesResult.error) throw new Error(changesResult.error.message);
 
+  const stores = sortProduceStores((storesResult.data ?? []) as unknown as Store[]);
+  const storesByStorageId = storesByBizniSoftStorageId(stores);
   const changes = (changesResult.data ?? []) as BizniSoftPriceChange[];
   const articleIds = Array.from(new Set(changes.filter((change) => !change.name || !change.barcode).map((change) => change.article_id)));
-  const articles = await fetchArticles(articleIds);
+  const articles = await fetchArticles(supabase, articleIds);
   const changesWithArticles = changes.map((change) => attachArticle(change, articles));
-  const searchedChanges = search ? changesWithArticles.filter((change) => matchesSearch(change, search)) : changesWithArticles;
-  const groups = groupChanges(searchedChanges, storesByStorageId);
+  const groups = groupChanges(changesWithArticles, storesByStorageId);
   const selectedGroup = selectedStorageKey ? groups.find((group) => group.storageKey === selectedStorageKey) ?? null : null;
-  const summary = await fetchSummary(today);
-  const lastCheck = await fetchLastCheck();
+  const totalCount = changesResult.count ?? changes.length;
 
   return (
     <main className="page-fade space-y-6">
@@ -121,7 +134,7 @@ export default async function BizniSoftPriceChangesPage({ searchParams }: { sear
         </form>
 
         <p className="text-sm text-slate-600">
-          Prikazano promena: <strong>{searchedChanges.length}</strong> | Grupa: <strong>{groups.length}</strong>
+          Prikazano promena: <strong>{changesWithArticles.length}</strong> od <strong>{totalCount}</strong> | Grupa na strani: <strong>{groups.length}</strong>
         </p>
       </section>
 
@@ -136,6 +149,13 @@ export default async function BizniSoftPriceChangesPage({ searchParams }: { sear
           )}
         </section>
       )}
+      <Pagination
+        page={page}
+        pageSize={PAGE_SIZE}
+        pathname="/admin/biznisoft-promene-cena"
+        searchParams={searchParams}
+        totalCount={totalCount}
+      />
     </main>
   );
 }
@@ -229,31 +249,29 @@ function SummaryCard({ label, value }: { label: string; value: number | string }
   );
 }
 
-async function fetchArticles(articleIds: number[]) {
+async function fetchArticles(supabase: ReturnType<typeof createClient>, articleIds: number[]) {
   if (articleIds.length === 0) return new Map<number, BizniSoftArticle>();
 
-  const supabase = createClient();
   const { data, error } = await supabase
     .from("biznisoft_articles")
-    .select("article_id, name, barcode, article_code, cat_no, unit, raw, synced_at")
+    .select("article_id, name, barcode, article_code, cat_no, unit")
     .in("article_id", articleIds);
 
   if (error) throw new Error(error.message);
   return new Map(((data ?? []) as BizniSoftArticle[]).map((article) => [article.article_id, article]));
 }
 
-async function fetchSummary(today: string) {
-  const supabase = createClient();
+async function fetchSummary(supabase: ReturnType<typeof createClient>, today: string) {
   const [todayResult, newResult, taskResult, ignoredResult, checkedResult] = await Promise.all([
     supabase.from("biznisoft_price_changes").select("id", { count: "exact", head: true }).eq("change_date", today),
     supabase.from("biznisoft_price_changes").select("id", { count: "exact", head: true }).eq("status", "new").eq("task_created", false),
     supabase.from("biznisoft_price_changes").select("id", { count: "exact", head: true }).eq("status", "task_created"),
     supabase.from("biznisoft_price_changes").select("id", { count: "exact", head: true }).eq("status", "ignored"),
-    supabase.from("biznisoft_stock_price_current").select("article_id", { count: "exact", head: true })
+    supabase.from("biznisoft_stock_price_current").select("article_id", { count: "planned", head: true })
   ]);
 
   return {
-    checkedArticles: checkedResult.count ?? 0,
+    checkedArticles: checkedResult.count ? `~${checkedResult.count}` : 0,
     ignored: ignoredResult.count ?? 0,
     new: newResult.count ?? 0,
     taskCreated: taskResult.count ?? 0,
@@ -261,8 +279,7 @@ async function fetchSummary(today: string) {
   };
 }
 
-async function fetchLastCheck() {
-  const supabase = createClient();
+async function fetchLastCheck(supabase: ReturnType<typeof createClient>) {
   const { data, error } = await supabase
     .from("biznisoft_stock_price_current")
     .select("last_seen_at")
@@ -299,12 +316,6 @@ function groupChanges(changes: BizniSoftPriceChangeWithArticle[], storesByStorag
   }
 
   return Array.from(groups.values()).sort((a, b) => a.label.localeCompare(b.label, "sr"));
-}
-
-function matchesSearch(change: BizniSoftPriceChangeWithArticle, search: string) {
-  return [change.article_name, change.article_barcode, change.article_code, String(change.article_id)]
-    .filter(Boolean)
-    .some((value) => String(value).toLowerCase().includes(search));
 }
 
 function storageLabel(storageKey: string, storesByStorageId: Map<number, Store>) {
@@ -364,4 +375,9 @@ function dateDaysAgo(days: number) {
     timeZone: "Europe/Belgrade",
     year: "numeric"
   }).format(date);
+}
+
+function positiveInteger(value: string | undefined, fallback: number) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }

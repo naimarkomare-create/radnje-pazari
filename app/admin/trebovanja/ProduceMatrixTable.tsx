@@ -1,6 +1,3 @@
-"use client";
-
-import { useState } from "react";
 import type { ProduceMatrixRow } from "@/lib/produce";
 import type { Store } from "@/lib/types";
 
@@ -13,48 +10,14 @@ export function ProduceMatrixTable({
   stores: Store[];
   selectedDate: string;
 }) {
-  const [exporting, setExporting] = useState(false);
-  const [error, setError] = useState("");
-
-  async function exportExcel() {
-    setExporting(true);
-    setError("");
-
-    try {
-      const XLSX = await import("xlsx");
-      const excelRows = rows.map((row) => {
-        const output: Record<string, string | number> = {
-          Artikal: row.itemName,
-          Jedinica: row.unit
-        };
-
-        for (const store of stores) {
-          output[store.name] = row.quantities[store.name] ?? 0;
-        }
-
-        output.Ukupno = row.total;
-        return output;
-      });
-      const worksheet = XLSX.utils.json_to_sheet(excelRows);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Trebovanje");
-      XLSX.writeFile(workbook, `trebovanje-voce-povrce-${selectedDate}.xlsx`);
-    } catch {
-      setError("Excel fajl nije mogao da bude napravljen.");
-    } finally {
-      setExporting(false);
-    }
-  }
-
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-lg font-bold text-ink">Trebovanje voća i povrća</h2>
-        <button className="button-secondary" disabled={exporting || rows.length === 0} onClick={exportExcel} type="button">
-          {exporting ? "Priprema..." : "Export u Excel"}
-        </button>
+        <a className="button-secondary text-center" href={`/api/admin/export/trebovanje-voce-povrce?date=${encodeURIComponent(selectedDate)}`}>
+          Izvezi Excel
+        </a>
       </div>
-      {error ? <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
       {rows.length === 0 ? (
         <p className="py-8 text-sm text-slate-500">Nema trebovanja za izabrani datum</p>
       ) : (

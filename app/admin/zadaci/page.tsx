@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AdminTaskForm } from "@/app/admin/zadaci/AdminTaskForm";
 import { PageHeader } from "@/components/PageHeader";
+import { Pagination } from "@/components/Pagination";
 import { requireAdmin } from "@/lib/auth";
 import { todayInBelgrade } from "@/lib/date";
 import { PRODUCE_STORE_NAMES, sortProduceStores } from "@/lib/produce";
@@ -8,24 +9,31 @@ import { computeTaskStatus, taskPriorityLabel } from "@/lib/tasks";
 import { createClient } from "@/lib/supabase/server";
 import type { Store, StoreTask } from "@/lib/types";
 
-export default async function AdminTasksPage() {
+const PAGE_SIZE = 30;
+
+export default async function AdminTasksPage({ searchParams }: { searchParams: { page?: string } }) {
   await requireAdmin();
   const supabase = createClient();
-  const storesResult = await supabase
+  const page = positiveInteger(searchParams.page, 1);
+  const storesQuery = supabase
     .from("stores")
-    .select("id, name, latitude, longitude, address, created_at")
+    .select("id, name")
     .in("name", [...PRODUCE_STORE_NAMES]);
-  const tasksResult = await supabase
+  const from = (page - 1) * PAGE_SIZE;
+  const tasksQuery = supabase
     .from("store_tasks")
     .select(
-      "id, title, description, due_date, due_time, priority, photo_required, created_by, created_at, active, store_task_assignments(id, task_id, store_id, status, completed_at, completed_by, photo_path, photo_url, created_at, stores(id, name))"
+      "id, title, due_date, due_time, priority, photo_required, created_at, active, store_task_assignments(id, status)",
+      { count: "exact" }
     )
     .eq("active", true)
     .order("due_date", { ascending: false })
     .order("created_at", { ascending: false })
-    .limit(50);
-  const stores = sortProduceStores((storesResult.data ?? []) as Store[]);
+    .range(from, from + PAGE_SIZE - 1);
+  const [storesResult, tasksResult] = await Promise.all([storesQuery, tasksQuery]);
+  const stores = sortProduceStores((storesResult.data ?? []) as unknown as Store[]);
   const tasks = (tasksResult.data ?? []) as unknown as StoreTask[];
+  const totalCount = tasksResult.count ?? tasks.length;
   const error = storesResult.error?.message ?? tasksResult.error?.message;
 
   return (
@@ -35,6 +43,13 @@ export default async function AdminTasksPage() {
         {error ? <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
         <AdminTaskForm stores={stores} today={todayInBelgrade()} />
         <TaskOverview tasks={tasks} />
+        <Pagination
+          page={page}
+          pageSize={PAGE_SIZE}
+          pathname="/admin/zadaci"
+          searchParams={searchParams}
+          totalCount={totalCount}
+        />
       </div>
     </>
   );
@@ -65,7 +80,6 @@ function TaskOverview({ tasks }: { tasks: StoreTask[] }) {
                     {task.photo_required ? <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-bold text-slate-700">Slika obavezna</span> : null}
                   </div>
                   <h3 className="mt-2 text-lg font-bold text-ink">{task.title}</h3>
-                  {task.description ? <p className="mt-1 text-sm text-slate-600">{task.description}</p> : null}
                   <p className="mt-2 text-sm font-semibold text-slate-600">Rok: {formatDue(task.due_date, task.due_time)}</p>
                 </div>
                 <div className="grid gap-2 text-sm sm:grid-cols-3 lg:min-w-[360px]">
@@ -124,4 +138,9 @@ function priorityClass(priority: StoreTask["priority"]) {
 
 function formatDue(date: string, time: string | null) {
   return time ? `${date} ${time.slice(0, 5)}` : date;
+}
+
+function positiveInteger(value: string | undefined, fallback: number) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }

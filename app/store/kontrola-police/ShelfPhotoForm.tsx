@@ -2,8 +2,6 @@
 
 import { useRef, useState, type FormEvent } from "react";
 import { submitShelfPhotoMetadata } from "@/app/store/kontrola-police/actions";
-import { compressImage } from "@/lib/image-compression";
-import { createClient } from "@/lib/supabase/client";
 import { SHELF_PHOTOS_BUCKET } from "@/lib/shelf-photos";
 import type { ActionState } from "@/lib/types";
 
@@ -27,6 +25,10 @@ export function ShelfPhotoForm({ storeId, today }: { storeId: string; today: str
     setLoading(true);
 
     try {
+      const [{ compressImage }, { createClient }] = await Promise.all([
+        import("@/lib/image-compression"),
+        import("@/lib/supabase/client")
+      ]);
       const compressed = await compressImage(file);
       const objectPath = `${checkDate}/${storeId}/${Date.now()}.jpg`;
       const storagePath = `${SHELF_PHOTOS_BUCKET}/${objectPath}`;

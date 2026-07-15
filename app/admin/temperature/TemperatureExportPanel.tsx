@@ -1,6 +1,8 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useState } from "react";
+import { downloadResponseFile } from "@/lib/client-download";
 import type { Store, TemperatureDevice, TemperatureReport } from "@/lib/types";
 
 const shifts = ["Prva smena", "Druga smena"] as const;
@@ -12,7 +14,6 @@ export function TemperatureExportPanel({
   selectedShift,
   stores,
   devices,
-  reports
 }: {
   month: string;
   selectedStore: string;
@@ -20,33 +21,78 @@ export function TemperatureExportPanel({
   selectedShift: string;
   stores: Store[];
   devices: TemperatureDevice[];
-  reports: TemperatureReport[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const [exporting, setExporting] = useState<"monthly" | "checklist" | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   function updateFilter(key: "month" | "store_id" | "device_id" | "shift", value: string) {
     const params = new URLSearchParams(searchParams.toString());
+    params.delete("page");
 
     if (value) params.set(key, value);
     else params.delete(key);
 
-    if (key === "store_id") params.delete("store");
+    if (key === "store_id") {
+      params.delete("store");
+      params.delete("device_id");
+    }
     const query = params.toString();
     router.replace(query ? `${pathname}?${query}` : pathname);
   }
 
   async function exportExcel() {
-    const XLSX = await import("xlsx");
-    const sheetRows = buildTemperatureTables({ month, stores, devices, reports });
-    const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.aoa_to_sheet(sheetRows);
-    worksheet["!cols"] = [{ wch: 14 }, { wch: 16 }, { wch: 16 }];
-    worksheet["!margins"] = { left: 0.35, right: 0.35, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 };
-    styleTemperatureSheet(worksheet as Record<string, unknown>, sheetRows);
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Mesečne temperature");
-    XLSX.writeFile(workbook, `temperature-${month}.xlsx`);
+    if (exporting) return;
+    setExporting("monthly");
+    setError(null);
+
+    try {
+      const params = new URLSearchParams({ month });
+      if (selectedStore) params.set("store_id", selectedStore);
+      if (selectedDevice) params.set("device_id", selectedDevice);
+      const response = await fetch(`/api/admin/exports/temperature?${params}`);
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Export nije uspeo.");
+
+      const XLSX = await import("xlsx");
+      const sheetRows = buildTemperatureTables({
+        month,
+        stores: (payload.stores ?? []) as Store[],
+        devices: (payload.devices ?? []) as TemperatureDevice[],
+        reports: (payload.reports ?? []) as TemperatureReport[]
+      });
+      const workbook = XLSX.utils.book_new();
+      const worksheet = XLSX.utils.aoa_to_sheet(sheetRows);
+      worksheet["!cols"] = [{ wch: 14 }, { wch: 16 }, { wch: 16 }];
+      worksheet["!margins"] = { left: 0.35, right: 0.35, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 };
+      styleTemperatureSheet(worksheet as Record<string, unknown>, sheetRows);
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Mesečne temperature");
+      XLSX.writeFile(workbook, `temperature-${month}.xlsx`);
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : "Export nije uspeo.");
+    } finally {
+      setExporting(null);
+    }
+  }
+
+  async function exportChecklist() {
+    if (exporting || !selectedStore || !selectedDevice) return;
+    setExporting("checklist");
+    setError(null);
+
+    try {
+      const params = new URLSearchParams({ device_id: selectedDevice, month, store_id: selectedStore });
+      const response = await fetch(`/api/admin/export/temperature?${params}`);
+      const storeName = stores.find((store) => store.id === selectedStore)?.name.replace(/\s+/g, "-") ?? "Radnja";
+      const deviceName = devices.find((device) => device.id === selectedDevice)?.name.replace(/\s+/g, "-") ?? "Uredjaj";
+      await downloadResponseFile(response, `Temperatura-${storeName}-${deviceName}-${month}.xlsx`);
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : "Export nije uspeo.");
+    } finally {
+      setExporting(null);
+    }
   }
 
   return (
@@ -92,10 +138,24 @@ export function TemperatureExportPanel({
             </select>
           </label>
         </div>
-        <button className="button-secondary" onClick={exportExcel} type="button">
-          Export mesečne temperature
-        </button>
+        <div className="grid gap-2">
+          <button className="button-secondary" disabled={exporting !== null} onClick={exportExcel} type="button">
+            {exporting === "monthly" ? "Priprema..." : "Export mesečne temperature"}
+          </button>
+          <button
+            className="button-secondary"
+            disabled={exporting !== null || !selectedStore || !selectedDevice}
+            onClick={exportChecklist}
+            type="button"
+          >
+            {exporting === "checklist" ? "Priprema..." : "Izvezi ček listu"}
+          </button>
+        </div>
       </div>
+      {!selectedStore || !selectedDevice ? (
+        <p className="mt-3 text-sm text-slate-600">Izaberite jednu radnju i jedan uređaj za temperaturnu ček listu.</p>
+      ) : null}
+      {error ? <p className="mt-3 text-sm font-semibold text-red-700">{error}</p> : null}
     </section>
   );
 }

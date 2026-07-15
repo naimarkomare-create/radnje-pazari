@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CreateGroupTaskButton } from "@/app/admin/biznisoft-akcije/[groupKey]/CreateGroupTaskButton";
 import { PageHeader } from "@/components/PageHeader";
+import { Pagination } from "@/components/Pagination";
 import { requireAdmin } from "@/lib/auth";
 import {
   actionStatusFromDates,
@@ -21,7 +22,7 @@ export default async function BizniSoftActionDetailPage({
   searchParams
 }: {
   params: { groupKey: string };
-  searchParams: { q?: string };
+  searchParams: { page?: string; q?: string };
 }) {
   await requireAdmin();
   const supabase = createClient();
@@ -29,12 +30,14 @@ export default async function BizniSoftActionDetailPage({
   const parts = parseSaleActionGroupKey(decodedGroupKey);
   const today = todayInBelgrade();
   const search = typeof searchParams.q === "string" ? searchParams.q.trim() : "";
+  const page = positiveInteger(searchParams.page, 1);
   const storesResult = await supabase
     .from("stores")
     .select("id, name, latitude, longitude, address, created_at")
     .in("name", [...PRODUCE_STORE_NAMES]);
   const stores = sortProduceStores((storesResult.data ?? []) as Store[]);
   let rows: BizniSoftSaleActionWithArticle[] = [];
+  let totalRows = 0;
   let error = storesResult.error?.message;
 
   if (!parts) {
@@ -42,22 +45,33 @@ export default async function BizniSoftActionDetailPage({
   } else {
     let query = supabase
       .from("biznisoft_sale_actions_with_articles")
-      .select("*")
+      .select(
+        "id, source_key, sale_action_name, action_type, loyalty_level, storage_id, article_id, article_attribute_id, discount_percent, wholesale_price, retail_price, from_chapter, chapter_to, priority_level, raw, synced_at, article_name, article_barcode, article_code, article_cat_no, article_unit, article_raw",
+        { count: "exact" }
+      )
       .eq("action_type", parts.action_type)
       .order("article_name", { ascending: true, nullsFirst: false });
 
     query = parts.storage_id === null ? query.is("storage_id", null) : query.eq("storage_id", parts.storage_id);
     query = parts.from_chapter === null ? query.is("from_chapter", null) : query.eq("from_chapter", parts.from_chapter);
     query = parts.chapter_to === null ? query.is("chapter_to", null) : query.eq("chapter_to", parts.chapter_to);
+    query = parts.loyalty_level === 0 ? query.or("loyalty_level.is.null,loyalty_level.eq.0") : query.eq("loyalty_level", parts.loyalty_level);
+    query = parts.priority_level === 0 ? query.or("priority_level.is.null,priority_level.eq.0") : query.eq("priority_level", parts.priority_level);
 
-    const rowsResult = await query;
-    rows = ((rowsResult.data ?? []) as unknown as BizniSoftSaleActionWithArticle[]).filter(
-      (row) => (row.loyalty_level ?? 0) === parts.loyalty_level && (row.priority_level ?? 0) === parts.priority_level
-    );
+    if (search) {
+      const safeSearch = search.replace(/[%_,()]/g, "").slice(0, 80);
+      const articleId = Number(safeSearch);
+      query = Number.isInteger(articleId)
+        ? query.or(`article_id.eq.${articleId},article_code.ilike.%${safeSearch}%,article_barcode.ilike.%${safeSearch}%`)
+        : query.or(`article_name.ilike.%${safeSearch}%,article_code.ilike.%${safeSearch}%,article_barcode.ilike.%${safeSearch}%`);
+    }
+
+    const from = (page - 1) * 50;
+    const rowsResult = await query.range(from, from + 49);
+    rows = (rowsResult.data ?? []) as unknown as BizniSoftSaleActionWithArticle[];
+    totalRows = rowsResult.count ?? rows.length;
     error = error ?? rowsResult.error?.message;
   }
-
-  const filteredRows = filterRows(rows, search);
 
   return (
     <>
@@ -72,9 +86,16 @@ export default async function BizniSoftActionDetailPage({
         {error ? <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
         {rows.length > 0 ? (
           <>
-            <ActionHeader rows={rows} stores={stores} today={today} />
+            <ActionHeader rows={rows} stores={stores} today={today} totalRows={totalRows} />
             <SearchBox search={search} />
-            <ArticleTable rows={filteredRows} stores={stores} />
+            <ArticleTable rows={rows} stores={stores} />
+            <Pagination
+              page={page}
+              pageSize={50}
+              pathname={`/admin/biznisoft-akcije/${encodeURIComponent(decodedGroupKey)}`}
+              searchParams={{ q: search }}
+              totalCount={totalRows}
+            />
           </>
         ) : !error ? (
           <p className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500 shadow-sm">Akcija nije pronađena.</p>
@@ -84,7 +105,17 @@ export default async function BizniSoftActionDetailPage({
   );
 }
 
-function ActionHeader({ rows, stores, today }: { rows: BizniSoftSaleActionWithArticle[]; stores: Store[]; today: string }) {
+function ActionHeader({
+  rows,
+  stores,
+  today,
+  totalRows
+}: {
+  rows: BizniSoftSaleActionWithArticle[];
+  stores: Store[];
+  today: string;
+  totalRows: number;
+}) {
   const first = rows[0];
   const storesByStorageId = storesByStorageIdMap(stores);
   const status = actionStatusFromDates({ chapter_to: first.chapter_to, from_chapter: first.from_chapter, today });
@@ -96,7 +127,7 @@ function ActionHeader({ rows, stores, today }: { rows: BizniSoftSaleActionWithAr
         <Info label="Period OD" value={formatDateTime(first.from_chapter)} />
         <Info label="Period DO" value={formatDateTime(first.chapter_to)} />
         <Info label="Loyalty level" value={String(first.loyalty_level ?? 0)} />
-        <Info label="Ukupno artikala" value={String(rows.length)} />
+        <Info label="Ukupno artikala" value={String(totalRows)} />
         <div>
           <p className="text-xs font-semibold uppercase text-slate-500">Status</p>
           <p className="mt-1">
@@ -186,27 +217,6 @@ function ArticleTable({ rows, stores }: { rows: BizniSoftSaleActionWithArticle[]
   );
 }
 
-function filterRows(rows: BizniSoftSaleActionWithArticle[], search: string) {
-  if (!search) return rows;
-
-  const query = search.toLowerCase();
-  return rows.filter((row) => {
-    const haystack = [
-      row.article_id,
-      row.article_code,
-      row.article_name,
-      row.article_barcode,
-      row.article_cat_no,
-      row.article_attribute_id
-    ]
-      .filter((value) => value !== null && value !== undefined)
-      .join(" ")
-      .toLowerCase();
-
-    return haystack.includes(query);
-  });
-}
-
 function storesByStorageIdMap(stores: Store[]) {
   return new Map(
     stores.map((store) => [storageIdFromStoreName(store.name), store]).filter((entry): entry is [number, Store] => entry[0] !== null)
@@ -284,6 +294,11 @@ function safeDecode(value: string) {
   } catch {
     return value;
   }
+}
+
+function positiveInteger(value: string | undefined, fallback: number) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function Th({ children }: { children: React.ReactNode }) {

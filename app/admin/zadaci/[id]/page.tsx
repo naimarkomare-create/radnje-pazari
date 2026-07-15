@@ -94,7 +94,17 @@ function AssignmentTable({ task, assignments }: { task: StoreTask; assignments: 
                         <a className="font-semibold text-leaf underline" href={assignment.signedPhotoUrl} rel="noreferrer" target="_blank">
                           Otvori sliku
                         </a>
-                        <img alt="Slika zadatka" className="h-14 w-20 rounded-md object-cover" src={assignment.signedPhotoUrl} />
+                        {/* Signed Storage URLs are short-lived and are best loaded directly. */}
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          alt="Slika zadatka"
+                          className="h-14 w-20 rounded-md object-cover"
+                          decoding="async"
+                          height="56"
+                          loading="lazy"
+                          src={assignment.signedPhotoUrl}
+                          width="80"
+                        />
                       </div>
                     ) : (
                       "-"

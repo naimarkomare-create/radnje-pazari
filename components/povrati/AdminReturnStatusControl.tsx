@@ -1,13 +1,11 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import type { ReturnProposalStatus } from "@/lib/types";
 
 const statuses: ReturnProposalStatus[] = ["draft", "submitted", "reviewed", "completed", "cancelled"];
 
 export function AdminReturnStatusControl({ proposalId, status }: { proposalId: string; status: ReturnProposalStatus }) {
-  const router = useRouter();
   const [value, setValue] = useState(status);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -37,7 +35,6 @@ export function AdminReturnStatusControl({ proposalId, status }: { proposalId: s
               }
 
               setMessage("Status je sačuvan.");
-              router.refresh();
             });
           }}
           value={value}

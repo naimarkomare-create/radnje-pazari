@@ -2,10 +2,8 @@
 
 import { useRef, useState } from "react";
 import { completeStoreTask } from "@/app/store/task-actions";
-import { compressImage } from "@/lib/image-compression";
 import { SHELF_PHOTOS_BUCKET } from "@/lib/shelf-photos";
 import { computeTaskStatus, taskPriorityLabel, taskStatusLabel } from "@/lib/tasks";
-import { createClient } from "@/lib/supabase/client";
 import type { ActionState, StoreTaskAssignment } from "@/lib/types";
 
 export function StoreTasks({ assignments, storeId }: { assignments: StoreTaskAssignment[]; storeId: string }) {
@@ -58,6 +56,10 @@ function StoreTaskCard({ assignment, storeId }: { assignment: StoreTaskAssignmen
           return;
         }
 
+        const [{ compressImage }, { createClient }] = await Promise.all([
+          import("@/lib/image-compression"),
+          import("@/lib/supabase/client")
+        ]);
         const compressed = await compressImage(file);
         const objectPath = `tasks/${storeId}/${assignment.id}/${Date.now()}.jpg`;
         photoPath = `${SHELF_PHOTOS_BUCKET}/${objectPath}`;

@@ -1,20 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentProfile } from "@/lib/auth";
-import { canEditReturnProposal } from "@/lib/return-proposals";
+import { getCurrentProfileWithClient } from "@/lib/auth";
+import { canEditReturnProposal, RETURN_PROPOSAL_ITEM_COLUMNS } from "@/lib/return-proposals";
 import { createClient } from "@/lib/supabase/server";
 import type { ReturnProposal } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
-  const profile = await getCurrentProfile();
+  const supabase = createClient();
+  const profile = await getCurrentProfileWithClient(supabase);
 
   if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const supabase = createClient();
   const { data: proposalData, error: proposalError } = await supabase
     .from("return_proposals")
-    .select("*")
+    .select("id, store_id, status")
     .eq("id", params.id)
     .single();
 
@@ -42,24 +42,26 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       note: typeof body.note === "string" ? body.note : null,
       proposal_id: params.id,
       quantity,
-      raw_article: typeof body.raw_article === "object" && body.raw_article !== null ? body.raw_article : {},
+      raw_article: {},
       reason: typeof body.reason === "string" ? body.reason : null,
       unit: typeof body.unit === "string" ? body.unit : null,
       updated_by: profile.id
     })
-    .select("*")
+    .select(RETURN_PROPOSAL_ITEM_COLUMNS)
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  await supabase.from("return_proposals").update({ updated_by: profile.id }).eq("id", params.id);
-  await supabase.from("return_proposal_history").insert({
-    action: "item_added",
-    item_id: data.id,
-    new_value: data,
-    proposal_id: params.id,
-    user_id: profile.id
-  });
+  await Promise.all([
+    supabase.from("return_proposals").update({ updated_by: profile.id }).eq("id", params.id),
+    supabase.from("return_proposal_history").insert({
+      action: "item_added",
+      item_id: data.id,
+      new_value: data,
+      proposal_id: params.id,
+      user_id: profile.id
+    })
+  ]);
 
   return NextResponse.json({ item: data }, { status: 201 });
 }

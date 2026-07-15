@@ -41,16 +41,16 @@ export default async function StoreDashboardPage() {
   const storeId = profile.store_id ?? "";
 
   const [daily, temperatures, produce, todayRevenue, todayTemperature, todayShelfPhoto, taskAssignmentsResult] = await Promise.all([
-    supabase.from("daily_revenue_reports").select("id", { count: "exact", head: true }),
-    supabase.from("temperature_reports").select("id", { count: "exact", head: true }),
-    supabase.from("produce_request_batches").select("id", { count: "exact", head: true }),
+    supabase.from("daily_revenue_reports").select("id", { count: "exact", head: true }).eq("store_id", storeId),
+    supabase.from("temperature_reports").select("id", { count: "exact", head: true }).eq("store_id", storeId),
+    supabase.from("produce_request_batches").select("id", { count: "exact", head: true }).eq("store_id", storeId),
     supabase.from("daily_revenue_reports").select("id", { count: "exact", head: true }).eq("store_id", storeId).eq("report_date", today),
     supabase.from("temperature_reports").select("id", { count: "exact", head: true }).eq("store_id", storeId).eq("report_date", today),
     supabase.from("produce_shelf_photo_checks").select("id", { count: "exact", head: true }).eq("store_id", storeId).eq("check_date", today),
     supabase
       .from("store_task_assignments")
       .select(
-        "id, task_id, store_id, status, completed_at, completed_by, photo_path, photo_url, created_at, store_tasks!inner(id, title, description, due_date, due_time, priority, photo_required, created_by, created_at, active)"
+        "id, task_id, store_id, status, completed_at, store_tasks!inner(id, title, description, due_date, due_time, priority, photo_required, active)"
       )
       .eq("store_id", storeId)
       .eq("store_tasks.due_date", today)

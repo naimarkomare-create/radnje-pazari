@@ -1,4 +1,4 @@
-import { createSignedShelfPhotoUrl } from "@/lib/shelf-photos";
+import { createSignedShelfPhotoUrls } from "@/lib/shelf-photos";
 import type { StoreTaskAssignment, TaskPriority, TaskStatus } from "@/lib/types";
 
 export const TASK_PRIORITIES: Array<{ value: TaskPriority; label: string }> = [
@@ -38,10 +38,13 @@ export async function withSignedTaskPhotoUrls(
   supabase: ReturnType<typeof import("@/lib/supabase/server").createClient>,
   assignments: StoreTaskAssignment[]
 ) {
-  return Promise.all(
-    assignments.map(async (assignment) => ({
-      ...assignment,
-      signedPhotoUrl: await createSignedShelfPhotoUrl(supabase, assignment.photo_path)
-    }))
+  const urls = await createSignedShelfPhotoUrls(
+    supabase,
+    assignments.map((assignment) => assignment.photo_path)
   );
+
+  return assignments.map((assignment) => ({
+    ...assignment,
+    signedPhotoUrl: assignment.photo_path ? (urls.get(assignment.photo_path) ?? "") : ""
+  }));
 }

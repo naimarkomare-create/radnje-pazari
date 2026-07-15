@@ -263,6 +263,14 @@ export type ReturnProposal = {
   stores?: Pick<Store, "id" | "name"> | null;
   profiles?: Pick<Profile, "email"> | null;
   return_proposal_items?: ReturnProposalItem[];
+  item_count?: number;
+};
+
+export type ReturnProposalSummary = Pick<
+  ReturnProposal,
+  "id" | "store_id" | "status" | "return_date" | "created_at" | "updated_at" | "stores"
+> & {
+  item_count: number;
 };
 
 export type ReturnProposalItem = {
@@ -279,7 +287,7 @@ export type ReturnProposalItem = {
   updated_by: string | null;
   created_at: string;
   updated_at: string;
-  raw_article: Record<string, unknown>;
+  raw_article?: Record<string, unknown>;
 };
 
 export type ArticleLookupItem = {
@@ -287,6 +295,4 @@ export type ArticleLookupItem = {
   name: string;
   barcode: string | null;
   unit: string | null;
-  storage_id: number | null;
-  raw?: Record<string, unknown>;
 };

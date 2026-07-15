@@ -3,7 +3,7 @@ import { requireAdmin } from "@/lib/auth";
 import { todayInBelgrade } from "@/lib/date";
 import { PRODUCE_STORE_NAMES, sortProduceStores } from "@/lib/produce";
 import { createClient } from "@/lib/supabase/server";
-import type { DailyRevenueReport, ProduceShelfPhotoCheck, Store, StoreTaskAssignment, TemperatureReport } from "@/lib/types";
+import type { DailyRevenueReport, ProduceShelfPhotoCheck, Store, TemperatureReport } from "@/lib/types";
 import { StoreMapSection, type StoreMapMarker, type StoreType } from "./StoreMapSection";
 
 export default async function AdminMapPage() {
@@ -24,10 +24,8 @@ export default async function AdminMapPage() {
       supabase.from("temperature_reports").select("store_id").eq("report_date", today),
       supabase.from("produce_shelf_photo_checks").select("store_id").eq("check_date", today),
       supabase
-        .from("store_task_assignments")
-        .select("store_id, status, store_tasks!inner(active)")
-        .neq("status", "done")
-        .eq("store_tasks.active", true)
+        .from("store_open_task_counts")
+        .select("store_id, open_count")
     ]);
 
   const stores = sortProduceStores((storesResult.data ?? []) as Store[]);
@@ -38,7 +36,7 @@ export default async function AdminMapPage() {
     todayRevenues: (todayRevenueResult.data ?? []) as Pick<DailyRevenueReport, "store_id">[],
     yesterday,
     yesterdayRevenues: (yesterdayRevenueResult.data ?? []) as Pick<DailyRevenueReport, "store_id" | "total_revenue">[],
-    openTasks: (openTasksResult.data ?? []) as Pick<StoreTaskAssignment, "store_id">[]
+    openTasks: (openTasksResult.data ?? []) as Array<{ store_id: string; open_count: number }>
   });
   const error =
     storesResult.error?.message ??
@@ -78,15 +76,12 @@ function buildMarkers({
   todayRevenues: Pick<DailyRevenueReport, "store_id">[];
   yesterday: string;
   yesterdayRevenues: Pick<DailyRevenueReport, "store_id" | "total_revenue">[];
-  openTasks: Pick<StoreTaskAssignment, "store_id">[];
+  openTasks: Array<{ store_id: string; open_count: number }>;
 }) {
   const todayRevenueStoreIds = new Set(todayRevenues.map((report) => report.store_id));
   const todayTemperatureStoreIds = new Set(temperatures.map((report) => report.store_id));
   const todayShelfPhotoStoreIds = new Set(shelfPhotos.map((report) => report.store_id));
-  const openTaskCounts = openTasks.reduce<Record<string, number>>((counts, task) => {
-    counts[task.store_id] = (counts[task.store_id] ?? 0) + 1;
-    return counts;
-  }, {});
+  const openTaskCounts = Object.fromEntries(openTasks.map((task) => [task.store_id, Number(task.open_count)]));
 
   return stores
     .filter((store) => store.latitude !== null && store.longitude !== null)

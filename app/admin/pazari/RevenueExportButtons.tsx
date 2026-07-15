@@ -1,23 +1,42 @@
 "use client";
 
+import { useState } from "react";
+import { downloadResponseFile } from "@/lib/client-download";
 import type { DailyRevenueReport, Store } from "@/lib/types";
 
 type RevenueExportReport = DailyRevenueReport & { stores?: { name: string } | null };
 
 export function RevenueExportButtons({
-  reports,
   stores,
   dateFrom,
-  dateTo
+  dateTo,
+  month,
+  selectedStore
 }: {
-  reports: RevenueExportReport[];
   stores: Store[];
   dateFrom: string;
   dateTo: string;
+  month: string;
+  selectedStore: string;
 }) {
+  const [exporting, setExporting] = useState<"all" | "cash" | "specification" | null>(null);
+  const [specificationMonth, setSpecificationMonth] = useState(month);
+  const [error, setError] = useState<string | null>(null);
+
   async function exportWorkbook(type: "all" | "cash") {
-    const XLSX = await import("xlsx");
-    const rows = buildRows(reports, stores, dateFrom, dateTo);
+    if (exporting) return;
+    setExporting(type);
+    setError(null);
+
+    try {
+      const params = new URLSearchParams({ date_from: dateFrom, date_to: dateTo });
+      if (selectedStore) params.set("store_id", selectedStore);
+      const response = await fetch(`/api/admin/exports/revenue?${params}`);
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Export nije uspeo.");
+
+      const XLSX = await import("xlsx");
+      const rows = buildRows((payload.reports ?? []) as RevenueExportReport[], stores, dateFrom, dateTo);
     const excelRows: Array<Record<string, string | number>> =
       type === "all"
         ? rows.map((row) => ({
@@ -39,21 +58,61 @@ export function RevenueExportButtons({
             Status: row.status
           }));
 
-    excelRows.push(type === "all" ? buildAllTotalRow(rows) : buildCashTotalRow(rows));
-    const worksheet = XLSX.utils.json_to_sheet(excelRows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, type === "all" ? "Svi pazari" : "Gotovina");
-    XLSX.writeFile(workbook, buildFileName(type, dateFrom, dateTo));
+      excelRows.push(type === "all" ? buildAllTotalRow(rows) : buildCashTotalRow(rows));
+      const worksheet = XLSX.utils.json_to_sheet(excelRows);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, type === "all" ? "Svi pazari" : "Gotovina");
+      XLSX.writeFile(workbook, buildFileName(type, dateFrom, dateTo));
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : "Export nije uspeo.");
+    } finally {
+      setExporting(null);
+    }
+  }
+
+  async function exportSpecification() {
+    if (exporting || !selectedStore) return;
+    setExporting("specification");
+    setError(null);
+
+    try {
+      const params = new URLSearchParams({ month: specificationMonth, store_id: selectedStore });
+      const response = await fetch(`/api/admin/export/pazari?${params}`);
+      const storeName = stores[0]?.name.replace(/\s+/g, "-") ?? "Radnja";
+      await downloadResponseFile(response, `Specifikacija-pazara-${storeName}-${specificationMonth}.xlsx`);
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : "Export nije uspeo.");
+    } finally {
+      setExporting(null);
+    }
   }
 
   return (
-    <section className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:flex-row">
-      <button className="button-secondary" onClick={() => exportWorkbook("all")} type="button">
-        Export svi pazari
-      </button>
-      <button className="button-secondary" onClick={() => exportWorkbook("cash")} type="button">
-        Export samo gotovina
-      </button>
+    <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <button className="button-secondary" disabled={exporting !== null} onClick={() => exportWorkbook("all")} type="button">
+          {exporting === "all" ? "Priprema..." : "Export svi pazari"}
+        </button>
+        <button className="button-secondary" disabled={exporting !== null} onClick={() => exportWorkbook("cash")} type="button">
+          {exporting === "cash" ? "Priprema..." : "Export samo gotovina"}
+        </button>
+      </div>
+      <div className="grid gap-3 border-t border-slate-200 pt-3 sm:grid-cols-[minmax(180px,260px)_auto] sm:items-end">
+        <label className="field">
+          <span className="label">Mesec specifikacije</span>
+          <input className="input" onChange={(event) => setSpecificationMonth(event.target.value)} type="month" value={specificationMonth} />
+        </label>
+        <button
+          className="button-secondary"
+          disabled={exporting !== null || !selectedStore || !specificationMonth}
+          onClick={exportSpecification}
+          type="button"
+        >
+          {exporting === "specification" ? "Priprema..." : "Izvezi specifikaciju"}
+        </button>
+      </div>
+      {!selectedStore ? <p className="text-sm text-slate-600">Izaberite jednu radnju za specifikaciju pazara.</p> : null}
+      {error ? <p className="text-sm font-semibold text-red-700">{error}</p> : null}
     </section>
   );
 }

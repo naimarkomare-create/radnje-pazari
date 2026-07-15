@@ -1,18 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentProfile } from "@/lib/auth";
-import { assertReturnStatus } from "@/lib/return-proposals";
+import { getCurrentProfileWithClient } from "@/lib/auth";
+import { assertReturnStatus, RETURN_PROPOSAL_COLUMNS } from "@/lib/return-proposals";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
-  const profile = await getCurrentProfile();
+  const supabase = createClient();
+  const profile = await getCurrentProfileWithClient(supabase);
 
   if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (profile.role !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const body = await request.json().catch(() => ({}));
-  const status = assertReturnStatus(String(body.status ?? ""));
+  let status;
+  try {
+    status = assertReturnStatus(String(body.status ?? ""));
+  } catch {
+    return NextResponse.json({ error: "Status nije ispravan." }, { status: 400 });
+  }
   const now = new Date().toISOString();
   const update: Record<string, unknown> = {
     status,
@@ -27,13 +33,12 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   if (status === "cancelled") update.cancelled_at = now;
   if (status === "submitted") update.submitted_at = now;
 
-  const supabase = createClient();
-  const { data: oldProposal } = await supabase.from("return_proposals").select("*").eq("id", params.id).single();
+  const { data: oldProposal } = await supabase.from("return_proposals").select(RETURN_PROPOSAL_COLUMNS).eq("id", params.id).single();
   const { data, error } = await supabase
     .from("return_proposals")
     .update(update)
     .eq("id", params.id)
-    .select("*, stores(id, name), return_proposal_items(*)")
+    .select(`${RETURN_PROPOSAL_COLUMNS}, stores(id, name)`)
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

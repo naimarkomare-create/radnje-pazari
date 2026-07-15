@@ -2,6 +2,7 @@ import { RevenueExportButtons } from "@/app/admin/pazari/RevenueExportButtons";
 import { RevenueRangeFilters } from "@/app/admin/pazari/RevenueRangeFilters";
 import { DailyRevenueTable } from "@/components/AdminTables";
 import { PageHeader } from "@/components/PageHeader";
+import { Pagination } from "@/components/Pagination";
 import { requireAdmin } from "@/lib/auth";
 import { todayInBelgrade } from "@/lib/date";
 import { createClient } from "@/lib/supabase/server";
@@ -10,7 +11,7 @@ import type { DailyRevenueReport, Store } from "@/lib/types";
 export default async function AdminDailyRevenuePage({
   searchParams
 }: {
-  searchParams: { date?: string; date_from?: string; date_to?: string; store?: string; store_id?: string };
+  searchParams: { date?: string; date_from?: string; date_to?: string; page?: string; store?: string; store_id?: string };
 }) {
   await requireAdmin();
   const supabase = createClient();
@@ -28,19 +29,20 @@ export default async function AdminDailyRevenuePage({
       : typeof searchParams.store === "string"
         ? searchParams.store
         : "";
-  const storesResult = await supabase.from("stores").select("id, name, created_at").order("name");
-  const stores = (storesResult.data ?? []) as Store[];
-  const exportStores = selectedStore ? stores.filter((store) => store.id === selectedStore) : stores;
+  const page = positiveInteger(searchParams.page, 1);
+  const storesQuery = supabase.from("stores").select("id, name").order("name");
   let query = supabase
     .from("daily_revenue_reports")
-    .select("id, store_id, user_id, report_date, shift, cash_revenue, check_revenue, card_revenue, bank_transfer_revenue, correction_revenue, edopuna_revenue, total_revenue, note, created_at, stores(name)")
+    .select("id, store_id, user_id, report_date, shift, cash_revenue, check_revenue, card_revenue, bank_transfer_revenue, correction_revenue, edopuna_revenue, total_revenue, note, created_at, stores(name)", { count: "exact" })
     .order("report_date", { ascending: false })
-    .order("created_at", { ascending: false })
-    .limit(100);
+    .order("created_at", { ascending: false });
 
   query = query.gte("report_date", dateFrom).lte("report_date", dateTo);
   if (selectedStore) query = query.eq("store_id", selectedStore);
-  const reports = await query;
+  const from = (page - 1) * 30;
+  const [storesResult, reports] = await Promise.all([storesQuery, query.range(from, from + 29)]);
+  const stores = (storesResult.data ?? []) as Store[];
+  const exportStores = selectedStore ? stores.filter((store) => store.id === selectedStore) : stores;
 
   return (
     <>
@@ -50,8 +52,16 @@ export default async function AdminDailyRevenuePage({
         <RevenueExportButtons
           dateFrom={dateFrom}
           dateTo={dateTo}
-          reports={(reports.data ?? []) as unknown as DailyRevenueReport[]}
+          month={dateFrom.slice(0, 7)}
+          selectedStore={selectedStore}
           stores={exportStores}
+        />
+        <Pagination
+          page={page}
+          pageSize={30}
+          pathname="/admin/pazari"
+          searchParams={searchParams}
+          totalCount={reports.count ?? reports.data?.length ?? 0}
         />
         <DailyRevenueTable
           error={reports.error?.message ?? storesResult.error?.message}
@@ -60,4 +70,9 @@ export default async function AdminDailyRevenuePage({
       </div>
     </>
   );
+}
+
+function positiveInteger(value: string | undefined, fallback: number) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }

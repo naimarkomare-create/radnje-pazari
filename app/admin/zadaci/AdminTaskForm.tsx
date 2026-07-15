@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useFormState } from "react-dom";
+import { useFormState, useFormStatus } from "react-dom";
 import { createStoreTask } from "@/app/admin/zadaci/actions";
 import { TASK_PRIORITIES, taskPriorityLabel } from "@/lib/tasks";
 import type { ActionState, Store } from "@/lib/types";
@@ -76,10 +76,18 @@ export function AdminTaskForm({ stores, today }: { stores: Store[]; today: strin
           </p>
         ) : null}
 
-        <button className="button-primary w-full sm:w-auto" type="submit">
-          Pošalji zadatak
-        </button>
+        <TaskSubmitButton />
       </form>
     </section>
+  );
+}
+
+function TaskSubmitButton() {
+  const { pending } = useFormStatus();
+
+  return (
+    <button className="button-primary w-full sm:w-auto" disabled={pending} type="submit">
+      {pending ? "Slanje..." : "Pošalji zadatak"}
+    </button>
   );
 }

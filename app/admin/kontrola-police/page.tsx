@@ -1,18 +1,19 @@
 import { DeleteShelfPhotoButton } from "@/app/admin/kontrola-police/DeleteShelfPhotoButton";
 import { ShelfPhotoFilters } from "@/app/admin/kontrola-police/ShelfPhotoFilters";
 import { PageHeader } from "@/components/PageHeader";
+import { Pagination } from "@/components/Pagination";
 import { formatTime } from "@/components/ShelfPhotoGrid";
 import { requireAdmin } from "@/lib/auth";
 import { todayInBelgrade } from "@/lib/date";
 import { PRODUCE_STORE_NAMES, sortProduceStores } from "@/lib/produce";
-import { createSignedShelfPhotoUrl } from "@/lib/shelf-photos";
+import { withSignedShelfPhotoUrls } from "@/lib/shelf-photos";
 import { createClient } from "@/lib/supabase/server";
 import type { ProduceShelfPhotoCheck, Store } from "@/lib/types";
 
 export default async function AdminShelfPhotoPage({
   searchParams
 }: {
-  searchParams: { date?: string; store?: string; store_id?: string };
+  searchParams: { date?: string; page?: string; store?: string; store_id?: string };
 }) {
   await requireAdmin();
   const supabase = createClient();
@@ -23,27 +24,38 @@ export default async function AdminShelfPhotoPage({
       : typeof searchParams.store === "string"
         ? searchParams.store
         : "";
-  const storesResult = await supabase
+  const page = positiveInteger(searchParams.page, 1);
+  const storesQuery = supabase
     .from("stores")
     .select("id, name, created_at")
     .in("name", [...PRODUCE_STORE_NAMES]);
-  const stores = sortProduceStores((storesResult.data ?? []) as Store[]);
 
-  let query = supabase
+  let photosQuery = supabase
     .from("produce_shelf_photo_checks")
-    .select("id, store_id, user_id, check_date, photo_url, storage_path, note, created_at, stores(id, name)")
+    .select("id, store_id, check_date, storage_path, note, created_at, stores(id, name)", { count: "exact" })
     .eq("check_date", selectedDate)
     .order("created_at", { ascending: false });
+  let statusQuery = supabase
+    .from("produce_shelf_photo_checks")
+    .select("store_id, storage_path")
+    .eq("check_date", selectedDate);
 
-  if (selectedStore) query = query.eq("store_id", selectedStore);
-  const photosResult = await query;
-  const photos = await Promise.all(
-    ((photosResult.data ?? []) as unknown as ProduceShelfPhotoCheck[]).map(async (photo) => ({
-      ...photo,
-      signedUrl: await createSignedShelfPhotoUrl(supabase, photo.storage_path)
-    }))
+  if (selectedStore) {
+    photosQuery = photosQuery.eq("store_id", selectedStore);
+    statusQuery = statusQuery.eq("store_id", selectedStore);
+  }
+  const from = (page - 1) * 30;
+  const [storesResult, photosResult, statusResult] = await Promise.all([
+    storesQuery,
+    photosQuery.range(from, from + 29),
+    statusQuery
+  ]);
+  const stores = sortProduceStores((storesResult.data ?? []) as Store[]);
+  const photos = await withSignedShelfPhotoUrls(
+    supabase,
+    (photosResult.data ?? []) as unknown as ProduceShelfPhotoCheck[]
   );
-  const submittedIds = new Set(photos.filter((photo) => photo.storage_path).map((photo) => photo.store_id));
+  const submittedIds = new Set((statusResult.data ?? []).filter((photo) => photo.storage_path).map((photo) => photo.store_id as string));
   const submittedStores = stores.filter((store) => submittedIds.has(store.id));
   const missingStores = stores.filter((store) => !submittedIds.has(store.id));
 
@@ -62,6 +74,13 @@ export default async function AdminShelfPhotoPage({
           <StatusPanel empty="Sve radnje su poslale sliku." stores={missingStores} title="Nisu poslali danas" />
         </section>
         <ShelfPhotoAdminTable photos={photos} />
+        <Pagination
+          page={page}
+          pageSize={30}
+          pathname="/admin/kontrola-police"
+          searchParams={searchParams}
+          totalCount={photosResult.count ?? photos.length}
+        />
       </div>
     </>
   );
@@ -142,4 +161,9 @@ function Th({ children }: { children: React.ReactNode }) {
 
 function Td({ children }: { children: React.ReactNode }) {
   return <td className="border-b border-slate-100 px-3 py-2 align-top text-slate-700">{children}</td>;
+}
+
+function positiveInteger(value: string | undefined, fallback: number) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }

@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { ShelfPhotoGrid } from "@/components/ShelfPhotoGrid";
 import { requireStore } from "@/lib/auth";
 import { todayInBelgrade } from "@/lib/date";
-import { createSignedShelfPhotoUrl } from "@/lib/shelf-photos";
+import { withSignedShelfPhotoUrls } from "@/lib/shelf-photos";
 import { createClient } from "@/lib/supabase/server";
 import type { ProduceShelfPhotoCheck } from "@/lib/types";
 
@@ -16,12 +16,7 @@ export default async function StoreShelfPhotoPage() {
     .select("id, store_id, user_id, check_date, photo_url, storage_path, note, created_at")
     .order("created_at", { ascending: false })
     .limit(12);
-  const photos = await Promise.all(
-    ((result.data ?? []) as ProduceShelfPhotoCheck[]).map(async (photo) => ({
-      ...photo,
-      signedUrl: await createSignedShelfPhotoUrl(supabase, photo.storage_path)
-    }))
-  );
+  const photos = await withSignedShelfPhotoUrls(supabase, (result.data ?? []) as ProduceShelfPhotoCheck[]);
 
   return (
     <>

@@ -1,9 +1,11 @@
 import { redirect } from "next/navigation";
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import type { Profile } from "@/lib/types";
 
-export async function getCurrentProfile() {
-  const supabase = createClient();
+type ServerClient = ReturnType<typeof createClient>;
+
+async function loadCurrentProfile(supabase: ServerClient) {
   const {
     data: { user },
     error: userError
@@ -24,6 +26,13 @@ export async function getCurrentProfile() {
   }
 
   return data as unknown as Profile;
+}
+
+// React cache is request-scoped during server rendering; profiles are never shared globally.
+export const getCurrentProfile = cache(async () => loadCurrentProfile(createClient()));
+
+export function getCurrentProfileWithClient(supabase: ServerClient) {
+  return loadCurrentProfile(supabase);
 }
 
 export async function requireProfile() {

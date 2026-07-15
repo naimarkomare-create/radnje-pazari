@@ -1,6 +1,7 @@
 import { AdminFilters } from "@/components/AdminFilters";
 import { TemperatureTable } from "@/components/AdminTables";
 import { PageHeader } from "@/components/PageHeader";
+import { Pagination } from "@/components/Pagination";
 import Link from "next/link";
 import { TemperatureExportPanel } from "@/app/admin/temperature/TemperatureExportPanel";
 import { requireAdmin } from "@/lib/auth";
@@ -12,7 +13,7 @@ import type { Store, TemperatureDevice, TemperatureReport } from "@/lib/types";
 export default async function AdminTemperaturePage({
   searchParams
 }: {
-  searchParams: { date?: string; store?: string; store_id?: string; month?: string; device_id?: string; shift?: string };
+  searchParams: { date?: string; store?: string; store_id?: string; month?: string; device_id?: string; shift?: string; page?: string };
 }) {
   await requireAdmin();
   const supabase = createClient();
@@ -27,51 +28,41 @@ export default async function AdminTemperaturePage({
         : "";
   const selectedDevice = typeof searchParams.device_id === "string" ? searchParams.device_id : "";
   const selectedShift = typeof searchParams.shift === "string" ? searchParams.shift : "";
-  const storesResult = await supabase
+  const page = positiveInteger(searchParams.page, 1);
+  const storesQuery = supabase
     .from("stores")
     .select("id, name, created_at")
     .in("name", [...PRODUCE_STORE_NAMES]);
-  const stores = sortProduceStores((storesResult.data ?? []) as Store[]);
-  const selectedStores = selectedStore ? stores.filter((store) => store.id === selectedStore) : stores;
   let query = supabase
     .from("temperature_reports")
-    .select("id, store_id, user_id, device_id, report_date, shift, device_name, temperature, note, created_at, stores(name)")
+    .select("id, store_id, user_id, device_id, report_date, shift, device_name, temperature, note, created_at, stores(name)", { count: "exact" })
     .order("report_date", { ascending: false })
-    .order("created_at", { ascending: false })
-    .limit(100);
+    .order("created_at", { ascending: false });
 
   if (selectedDate) query = query.eq("report_date", selectedDate);
   if (selectedStore) query = query.eq("store_id", selectedStore);
-  const monthStart = `${selectedMonth}-01`;
-  const monthEnd = getMonthEnd(selectedMonth);
   let devicesQuery = supabase
     .from("temperature_devices")
     .select("id, store_id, name, device_type, min_allowed, max_allowed, active, sort_order, created_at, stores(id, name)")
     .eq("active", true)
     .order("sort_order")
     .order("name");
-  let exportReportsQuery = supabase
-    .from("temperature_reports")
-    .select("id, store_id, user_id, device_id, report_date, shift, device_name, temperature, note, created_at, stores(name), temperature_devices(name)")
-    .gte("report_date", monthStart)
-    .lte("report_date", monthEnd);
-
   if (selectedStore) {
     devicesQuery = devicesQuery.eq("store_id", selectedStore);
-    exportReportsQuery = exportReportsQuery.eq("store_id", selectedStore);
   }
 
   if (selectedDevice) {
     devicesQuery = devicesQuery.eq("id", selectedDevice);
-    exportReportsQuery = exportReportsQuery.eq("device_id", selectedDevice);
   }
 
-  const [reports, statusReports, devicesResult, exportReportsResult] = await Promise.all([
-    query,
+  const from = (page - 1) * 30;
+  const [storesResult, reports, statusReports, devicesResult] = await Promise.all([
+    storesQuery,
+    query.range(from, from + 29),
     supabase.from("temperature_reports").select("store_id").eq("report_date", selectedDate),
-    devicesQuery,
-    exportReportsQuery
+    devicesQuery
   ]);
+  const stores = sortProduceStores((storesResult.data ?? []) as Store[]);
   const submittedStoreIds = new Set((statusReports.data ?? []).map((report) => report.store_id as string));
   const submittedStores = stores.filter((store) => submittedStoreIds.has(store.id));
   const missingStores = stores.filter((store) => !submittedStoreIds.has(store.id));
@@ -88,11 +79,10 @@ export default async function AdminTemperaturePage({
         <TemperatureExportPanel
           devices={(devicesResult.data ?? []) as unknown as TemperatureDevice[]}
           month={selectedMonth}
-          reports={(exportReportsResult.data ?? []) as unknown as TemperatureReport[]}
           selectedDevice={selectedDevice}
           selectedShift={selectedShift}
           selectedStore={selectedStore}
-          stores={selectedStores}
+          stores={stores}
         />
         <AdminFilters
           resetHref="/admin/temperature"
@@ -105,18 +95,19 @@ export default async function AdminTemperaturePage({
           <StatusPanel title="Nisu poslali temperaturu" stores={missingStores} empty="Sve radnje su poslale temperaturu." />
         </section>
         <TemperatureTable
-          error={reports.error?.message ?? storesResult.error?.message ?? statusReports.error?.message ?? devicesResult.error?.message ?? exportReportsResult.error?.message}
+          error={reports.error?.message ?? storesResult.error?.message ?? statusReports.error?.message ?? devicesResult.error?.message}
           reports={(reports.data ?? []) as unknown as TemperatureReport[]}
+        />
+        <Pagination
+          page={page}
+          pageSize={30}
+          pathname="/admin/temperature"
+          searchParams={searchParams}
+          totalCount={reports.count ?? reports.data?.length ?? 0}
         />
       </div>
     </>
   );
-}
-
-function getMonthEnd(month: string) {
-  const [year, monthIndex] = month.split("-").map(Number);
-  const lastDay = new Date(year, monthIndex, 0).getDate();
-  return `${month}-${String(lastDay).padStart(2, "0")}`;
 }
 
 function StatusPanel({ title, stores, empty }: { title: string; stores: Store[]; empty: string }) {
@@ -139,4 +130,9 @@ function StatusPanel({ title, stores, empty }: { title: string; stores: Store[];
       </ul>
     </section>
   );
+}
+
+function positiveInteger(value: string | undefined, fallback: number) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }

@@ -1,20 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentProfile } from "@/lib/auth";
-import { todayIsoDate } from "@/lib/return-proposals";
+import { getCurrentProfileWithClient } from "@/lib/auth";
+import { RETURN_PROPOSAL_COLUMNS, todayIsoDate } from "@/lib/return-proposals";
 import { createClient } from "@/lib/supabase/server";
+import type { ReturnProposal, ReturnProposalSummary } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  const profile = await getCurrentProfile();
+  const supabase = createClient();
+  const profile = await getCurrentProfileWithClient(supabase);
 
   if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const supabase = createClient();
   const searchParams = request.nextUrl.searchParams;
+  const page = positiveInteger(searchParams.get("page"), 1);
+  const pageSize = Math.min(50, positiveInteger(searchParams.get("limit"), 30));
   let query = supabase
     .from("return_proposals")
-    .select("*, stores(id, name), return_proposal_items(id)")
+    .select(`${RETURN_PROPOSAL_COLUMNS}, stores(id, name), return_proposal_items(count)`, { count: "exact" })
     .order("updated_at", { ascending: false });
 
   if (profile.role === "store") {
@@ -27,14 +30,29 @@ export async function GET(request: NextRequest) {
   const date = searchParams.get("date");
   if (date) query = query.eq("return_date", date);
 
-  const { data, error } = await query.limit(100);
+  const from = (page - 1) * pageSize;
+  const { data, error, count } = await query.range(from, from + pageSize - 1);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({ proposals: data ?? [] });
+  const proposals = ((data ?? []) as unknown as Array<ReturnProposal & { return_proposal_items?: Array<{ count: number }> }>).map(
+    (proposal): ReturnProposalSummary => ({
+      created_at: proposal.created_at,
+      id: proposal.id,
+      item_count: Number(proposal.return_proposal_items?.[0]?.count ?? 0),
+      return_date: proposal.return_date,
+      status: proposal.status,
+      store_id: proposal.store_id,
+      stores: proposal.stores,
+      updated_at: proposal.updated_at
+    })
+  );
+
+  return NextResponse.json({ count: count ?? proposals.length, page, pageSize, proposals });
 }
 
 export async function POST(request: NextRequest) {
-  const profile = await getCurrentProfile();
+  const supabase = createClient();
+  const profile = await getCurrentProfileWithClient(supabase);
 
   if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -43,7 +61,6 @@ export async function POST(request: NextRequest) {
 
   if (!storeId) return NextResponse.json({ error: "Radnja je obavezna." }, { status: 400 });
 
-  const supabase = createClient();
   const { data, error } = await supabase
     .from("return_proposals")
     .insert({
@@ -54,7 +71,7 @@ export async function POST(request: NextRequest) {
       store_id: storeId,
       updated_by: profile.id
     })
-    .select("*, stores(id, name), return_proposal_items(*)")
+    .select(`${RETURN_PROPOSAL_COLUMNS}, stores(id, name)`)
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -66,5 +83,10 @@ export async function POST(request: NextRequest) {
     user_id: profile.id
   });
 
-  return NextResponse.json({ proposal: data }, { status: 201 });
+  return NextResponse.json({ proposal: { ...data, item_count: 0, return_proposal_items: [] } }, { status: 201 });
+}
+
+function positiveInteger(value: string | null, fallback: number) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
