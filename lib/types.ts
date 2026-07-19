@@ -271,6 +271,7 @@ export type ReturnProposalSummary = Pick<
   "id" | "store_id" | "status" | "return_date" | "created_at" | "updated_at" | "stores"
 > & {
   item_count: number;
+  supplier_names: string[];
 };
 
 export type ReturnProposalItem = {
@@ -283,6 +284,10 @@ export type ReturnProposalItem = {
   quantity: number;
   reason: string | null;
   note: string | null;
+  supplier_id: string | null;
+  supplier_partner_id: string | null;
+  supplier_name: string | null;
+  supplier_relation_source: string | null;
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
@@ -290,9 +295,49 @@ export type ReturnProposalItem = {
   raw_article?: Record<string, unknown>;
 };
 
+export type ArticleSupplierOption = {
+  id: string;
+  partnerId: string;
+  name: string;
+  isPrimary: boolean;
+  relationSource: string;
+};
+
+export type SupplierSearchOption = {
+  id: string;
+  partnerId: string;
+  name: string;
+};
+
+export type SupplierCoverageArticle = {
+  articleId: number;
+  barcode: string | null;
+  name: string | null;
+  reason: string;
+  unit: string | null;
+};
+
+export type SupplierCoverageReport = {
+  totalArticles: number;
+  totalSuppliers: number;
+  totalRelations: number;
+  articlesWithSupplier: number;
+  articlesWithoutSupplier: number;
+  coveragePercent: number;
+  lastSyncAt: string | null;
+  processedDocuments: number;
+  processedDocumentDateFrom: string | null;
+  processedDocumentDateTo: string | null;
+  relationArticleIdsMissingLocally: number;
+  unmatchedSample: SupplierCoverageArticle[];
+};
+
 export type ArticleLookupItem = {
+  id: string;
+  code: string;
   article_id: number;
   name: string;
   barcode: string | null;
   unit: string | null;
+  suppliers: ArticleSupplierOption[];
 };

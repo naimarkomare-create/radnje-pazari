@@ -1,7 +1,22 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import type { ArticleLookupItem, ReturnProposal, ReturnProposalItem, ReturnProposalSummary } from "@/lib/types";
+import { SupplierSearchSelect } from "@/components/povrati/SupplierSearchSelect";
+import {
+  distinctSupplierNames,
+  formatReturnDate,
+  formatReturnItemCount,
+  returnStatusLabel,
+  returnSupplierSummary,
+  supplierRelationSourceLabel
+} from "@/lib/return-proposals";
+import type {
+  ArticleLookupItem,
+  ReturnProposal,
+  ReturnProposalItem,
+  ReturnProposalSummary,
+  SupplierSearchOption
+} from "@/lib/types";
 
 const reasons = ["Oštećeno", "Istek roka", "Višak", "Pogrešna isporuka", "Drugo"];
 
@@ -9,6 +24,10 @@ type ItemDraft = {
   quantity: number;
   reason: string;
   note: string;
+};
+
+type NewItemDraft = ItemDraft & {
+  supplierId: string | null;
 };
 
 export function ReturnProposalApp({
@@ -101,7 +120,7 @@ export function ReturnProposalApp({
     }
   }
 
-  async function addItem(draft: ItemDraft) {
+  async function addItem(draft: NewItemDraft) {
     if (!activeProposal || !selectedArticle || !beginAction("add")) return false;
     setError(null);
     setMessage(null);
@@ -115,6 +134,7 @@ export function ReturnProposalApp({
           note: draft.note,
           quantity: draft.quantity,
           reason: draft.reason,
+          supplier_id: draft.supplierId,
           unit: selectedArticle.unit
         }),
         headers: { "Content-Type": "application/json" },
@@ -141,7 +161,16 @@ export function ReturnProposalApp({
       setProposals((current) =>
         current.map((proposal) =>
           proposal.id === activeProposal.id
-            ? { ...proposal, item_count: proposal.item_count + 1, updated_at: new Date().toISOString() }
+            ? {
+                ...proposal,
+                item_count: proposal.item_count + 1,
+                supplier_names: item.supplier_name
+                  ? Array.from(new Set([...proposal.supplier_names, item.supplier_name])).sort(
+                      (left, right) => left.localeCompare(right, "sr")
+                    )
+                  : proposal.supplier_names,
+                updated_at: new Date().toISOString()
+              }
             : proposal
         )
       );
@@ -170,12 +199,19 @@ export function ReturnProposalApp({
         return false;
       }
 
+      const currentItems = activeProposal.return_proposal_items ?? [];
+      const remainingItems = currentItems.filter(
+        (currentItem) => currentItem.id !== item.id
+      );
+      const allItemsLoaded =
+        (activeProposal.item_count ?? currentItems.length) <= currentItems.length;
+
       setActiveProposal((current) =>
         current
           ? {
               ...current,
               item_count: Math.max(0, (current.item_count ?? current.return_proposal_items?.length ?? 1) - 1),
-              return_proposal_items: (current.return_proposal_items ?? []).filter((currentItem) => currentItem.id !== item.id),
+              return_proposal_items: remainingItems,
               updated_at: new Date().toISOString()
             }
           : current
@@ -183,7 +219,14 @@ export function ReturnProposalApp({
       setProposals((current) =>
         current.map((proposal) =>
           proposal.id === activeProposal.id
-            ? { ...proposal, item_count: Math.max(0, proposal.item_count - 1), updated_at: new Date().toISOString() }
+            ? {
+                ...proposal,
+                item_count: Math.max(0, proposal.item_count - 1),
+                supplier_names: allItemsLoaded
+                  ? distinctSupplierNames(remainingItems)
+                  : proposal.supplier_names,
+                updated_at: new Date().toISOString()
+              }
             : proposal
         )
       );
@@ -256,19 +299,35 @@ export function ReturnProposalApp({
       <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <h2 className="font-bold text-slate-950">Moje najave</h2>
         <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-          {proposals.map((proposal) => (
-            <button
-              className={`whitespace-nowrap rounded-md border px-3 py-2 text-sm font-semibold ${
-                activeProposal?.id === proposal.id ? "border-leaf bg-leaf text-white" : "border-slate-200 bg-white text-slate-700"
-              }`}
-              disabled={pendingAction !== null}
-              key={proposal.id}
-              onClick={() => openProposal(proposal.id)}
-              type="button"
-            >
-              {proposal.return_date ?? "-"} · {proposal.status} · {proposal.item_count}
-            </button>
-          ))}
+          {proposals.map((proposal) => {
+            const active = activeProposal?.id === proposal.id;
+            return (
+              <button
+                className={`min-w-72 max-w-sm rounded-md border px-3 py-2 text-left text-sm transition-colors ${
+                  active
+                    ? "border-leaf bg-leaf text-white"
+                    : "border-slate-200 bg-white text-slate-700"
+                }`}
+                disabled={pendingAction !== null}
+                key={proposal.id}
+                onClick={() => openProposal(proposal.id)}
+                type="button"
+              >
+                <span className="block font-semibold">
+                  {formatReturnDate(proposal.return_date)} ·{" "}
+                  {returnSupplierSummary(proposal.supplier_names, proposal.item_count)} ·{" "}
+                  {formatReturnItemCount(proposal.item_count)}
+                </span>
+                <span
+                  className={`mt-1 inline-flex rounded-md px-2 py-0.5 text-xs font-bold ${
+                    active ? "bg-white/20 text-white" : "bg-slate-100 text-slate-700"
+                  }`}
+                >
+                  {returnStatusLabel(proposal.status)}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </section>
 
@@ -277,7 +336,9 @@ export function ReturnProposalApp({
           <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-sm text-slate-500">Status: {activeProposal.status}</p>
+                <p className="text-sm text-slate-500">
+                  Status: {returnStatusLabel(activeProposal.status)}
+                </p>
                 <p className="text-sm text-slate-600">Prvi unos: {formatDateTime(activeProposal.created_at)}</p>
                 <p className="text-sm text-slate-600">Poslednja izmena: {formatDateTime(activeProposal.updated_at)}</p>
               </div>
@@ -457,12 +518,18 @@ function SelectedArticleForm({
 }: {
   article: ArticleLookupItem;
   disabled: boolean;
-  onAdd: (draft: ItemDraft) => Promise<boolean>;
+  onAdd: (draft: NewItemDraft) => Promise<boolean>;
   onCancel: () => void;
 }) {
+  const preferredSupplier =
+    article.suppliers.find((supplier) => supplier.isPrimary) ??
+    (article.suppliers.length === 1 ? article.suppliers[0] : null);
   const [quantity, setQuantity] = useState("");
   const [reason, setReason] = useState("");
   const [note, setNote] = useState("");
+  const [supplierId, setSupplierId] = useState(preferredSupplier?.id ?? "");
+  const [manualSupplier, setManualSupplier] =
+    useState<SupplierSearchOption | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const quantityRef = useRef<HTMLInputElement>(null);
@@ -477,10 +544,19 @@ function SelectedArticleForm({
       setError("Unesite količinu veću od 0.");
       return;
     }
+    if (article.suppliers.length > 1 && !supplierId) {
+      setError("Izaberite dobavljača.");
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
-    const added = await onAdd({ note, quantity: parsedQuantity, reason });
+    const added = await onAdd({
+      note,
+      quantity: parsedQuantity,
+      reason,
+      supplierId: supplierId || null
+    });
     if (!added) setSubmitting(false);
   }
 
@@ -503,6 +579,56 @@ function SelectedArticleForm({
           ×
         </button>
       </div>
+      {article.suppliers.length === 0 ? (
+        <div className="space-y-2">
+          <p className="rounded-md bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">
+            Dobavljač nije automatski povezan.
+          </p>
+          <SupplierSearchSelect
+            disabled={submitting || disabled}
+            onChange={(supplier) => {
+              setManualSupplier(supplier);
+              setSupplierId(supplier?.id ?? "");
+              setError(null);
+            }}
+            selected={manualSupplier}
+          />
+          <p className="text-xs text-slate-500">
+            Ako dobavljač nije poznat, artikal možete dodati bez evidentiranog
+            dobavljača.
+          </p>
+        </div>
+      ) : article.suppliers.length === 1 ? (
+        <div className="text-sm text-slate-700">
+          <p>
+            Dobavljač: <strong>{article.suppliers[0].name}</strong>
+          </p>
+          <p className="text-xs text-slate-500">
+            {supplierRelationSourceLabel(article.suppliers[0].relationSource)}
+          </p>
+        </div>
+      ) : (
+        <label className="field">
+          <span className="label">Dobavljač</span>
+          <select
+            className="input"
+            onChange={(event) => setSupplierId(event.target.value)}
+            value={supplierId}
+          >
+            <option value="">Izaberite dobavljača</option>
+            {article.suppliers.map((supplier) => (
+              <option key={supplier.id} value={supplier.id}>
+                {supplier.name}
+                {supplier.isPrimary
+                  ? " · Primarni dobavljač"
+                  : supplierRelationSourceLabel(supplier.relationSource)
+                    ? ` · ${supplierRelationSourceLabel(supplier.relationSource)}`
+                    : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <input
         className="input text-xl font-bold"
         inputMode="decimal"
@@ -575,6 +701,9 @@ function ProposalItemCard({
       {editing ? (
         <div className="space-y-2">
           <p className="font-semibold text-slate-950">{item.article_name}</p>
+          <p className="text-sm text-slate-600">
+            Dobavljač: {item.supplier_name ?? "Nije evidentiran"}
+          </p>
           <input className="input" inputMode="decimal" onChange={(event) => setQuantity(event.target.value)} type="number" value={quantity} />
           <select className="input" onChange={(event) => setReason(event.target.value)} value={reason}>
             <option value="">Razlog povrata</option>
@@ -601,6 +730,9 @@ function ProposalItemCard({
             <p className="font-semibold text-slate-950">{item.article_name}</p>
             <p className="text-sm text-slate-600">
               Količina: {item.quantity} {item.unit ?? ""} | Barkod: {item.barcode ?? "-"}
+            </p>
+            <p className="text-sm text-slate-600">
+              Dobavljač: {item.supplier_name ?? "Nije evidentiran"}
             </p>
             {item.reason ? <p className="text-xs text-slate-500">{item.reason}</p> : null}
           </div>
@@ -640,6 +772,7 @@ function toSummary(proposal: ReturnProposal): ReturnProposalSummary {
     status: proposal.status,
     store_id: proposal.store_id,
     stores: proposal.stores,
+    supplier_names: distinctSupplierNames(proposal.return_proposal_items ?? []),
     updated_at: proposal.updated_at
   };
 }

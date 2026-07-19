@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentProfileWithClient } from "@/lib/auth";
-import { RETURN_PROPOSAL_COLUMNS, todayIsoDate } from "@/lib/return-proposals";
+import {
+  distinctSupplierNames,
+  RETURN_PROPOSAL_COLUMNS,
+  todayIsoDate
+} from "@/lib/return-proposals";
 import { createClient } from "@/lib/supabase/server";
 import type { ReturnProposal, ReturnProposalSummary } from "@/lib/types";
 
@@ -17,7 +21,10 @@ export async function GET(request: NextRequest) {
   const pageSize = Math.min(50, positiveInteger(searchParams.get("limit"), 30));
   let query = supabase
     .from("return_proposals")
-    .select(`${RETURN_PROPOSAL_COLUMNS}, stores(id, name), return_proposal_items(count)`, { count: "exact" })
+    .select(
+      `${RETURN_PROPOSAL_COLUMNS}, stores(id, name), return_proposal_items(supplier_name)`,
+      { count: "exact" }
+    )
     .order("updated_at", { ascending: false });
 
   if (profile.role === "store") {
@@ -34,18 +41,26 @@ export async function GET(request: NextRequest) {
   const { data, error, count } = await query.range(from, from + pageSize - 1);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const proposals = ((data ?? []) as unknown as Array<ReturnProposal & { return_proposal_items?: Array<{ count: number }> }>).map(
-    (proposal): ReturnProposalSummary => ({
+  const proposals = (
+    (data ?? []) as unknown as Array<
+      ReturnProposal & {
+        return_proposal_items?: Array<{ supplier_name: string | null }>;
+      }
+    >
+  ).map((proposal): ReturnProposalSummary => {
+    const summaryItems = proposal.return_proposal_items ?? [];
+    return {
       created_at: proposal.created_at,
       id: proposal.id,
-      item_count: Number(proposal.return_proposal_items?.[0]?.count ?? 0),
+      item_count: summaryItems.length,
       return_date: proposal.return_date,
       status: proposal.status,
       store_id: proposal.store_id,
       stores: proposal.stores,
+      supplier_names: distinctSupplierNames(summaryItems),
       updated_at: proposal.updated_at
-    })
-  );
+    };
+  });
 
   return NextResponse.json({ count: count ?? proposals.length, page, pageSize, proposals });
 }
@@ -82,8 +97,17 @@ export async function POST(request: NextRequest) {
     proposal_id: data.id,
     user_id: profile.id
   });
-
-  return NextResponse.json({ proposal: { ...data, item_count: 0, return_proposal_items: [] } }, { status: 201 });
+  return NextResponse.json(
+    {
+      proposal: {
+        ...data,
+        item_count: 0,
+        return_proposal_items: [],
+        supplier_names: []
+      }
+    },
+    { status: 201 }
+  );
 }
 
 function positiveInteger(value: string | null, fallback: number) {
