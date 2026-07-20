@@ -11,7 +11,11 @@ import type { Store, StoreTask } from "@/lib/types";
 
 const PAGE_SIZE = 30;
 
-export default async function AdminTasksPage({ searchParams }: { searchParams: { page?: string } }) {
+export default async function AdminTasksPage({
+  searchParams
+}: {
+  searchParams: { deleted?: string; page?: string; warning?: string };
+}) {
   await requireAdmin();
   const supabase = createClient();
   const page = positiveInteger(searchParams.page, 1);
@@ -40,6 +44,16 @@ export default async function AdminTasksPage({ searchParams }: { searchParams: {
     <>
       <PageHeader eyebrow="Admin pregled" title="Pošalji zadatak" />
       <div className="page-content">
+        {searchParams.deleted === "1" ? (
+          <p className="rounded-md bg-green-50 px-3 py-2 text-sm font-semibold text-green-700">
+            Zadatak je obrisan.
+          </p>
+        ) : null}
+        {searchParams.warning === "storage" ? (
+          <p className="rounded-md bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">
+            Neke povezane fotografije nisu uklonjene iz skladišta. Proverite serverski zapis.
+          </p>
+        ) : null}
         {error ? <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
         <AdminTaskForm stores={stores} today={todayInBelgrade()} />
         <TaskOverview tasks={tasks} />

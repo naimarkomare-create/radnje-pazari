@@ -3,6 +3,7 @@ import path from "path";
 import ExcelJS from "exceljs";
 import { NextResponse } from "next/server";
 import { PRODUCE_STORE_NAMES } from "@/lib/produce";
+import { temperatureSlotIndex } from "@/lib/temperature-slots";
 
 const SERBIAN_MONTHS = ["JAN", "FEB", "MAR", "APR", "MAJ", "JUN", "JUL", "AVG", "SEP", "OKT", "NOV", "DEC"];
 
@@ -170,7 +171,7 @@ export async function buildTemperatureChecklistWorkbook({
 
   for (const report of reports) {
     const day = dayFromIsoDate(report.report_date, month);
-    const slot = temperatureSlot(report.shift);
+    const slot = temperatureSlotIndex(report.shift);
     if (!day || day > daysInMonth) continue;
     if (slot === null) {
       unmappedShiftCount += 1;
@@ -341,20 +342,6 @@ function dayFromIsoDate(value: string, month: string) {
   if (!value.startsWith(`${month}-`)) return null;
   const day = Number(value.slice(8, 10));
   return Number.isInteger(day) && day >= 1 && day <= 31 ? day : null;
-}
-
-function temperatureSlot(shift: string | null) {
-  const normalized = (shift ?? "")
-    .trim()
-    .toLocaleLowerCase("sr")
-    .replace(/[đð]/g, "dj")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-
-  if (normalized.includes("prva") || normalized === "07:00" || normalized === "07") return 0;
-  if (normalized.includes("druga") || normalized === "14:00" || normalized === "14") return 1;
-  if (normalized.includes("treca") || normalized === "20:00" || normalized === "20") return 2;
-  return null;
 }
 
 function temperatureDayLayout(day: number) {

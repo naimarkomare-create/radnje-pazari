@@ -1,4 +1,5 @@
 import { formatMoney } from "@/components/ReportLists";
+import { formatTemperatureSlot } from "@/lib/temperature-slots";
 import type { DailyRevenueReport, ProduceRequest, TemperatureReport } from "@/lib/types";
 
 export function DailyRevenueTable({ reports, error }: { reports: DailyRevenueReport[]; error?: string }) {
@@ -60,7 +61,7 @@ export function TemperatureTable({ reports, error }: { reports: TemperatureRepor
           <tr key={report.id}>
             <Td>{report.report_date}</Td>
             <Td>{report.stores?.name ?? "-"}</Td>
-            <Td>{report.shift ?? "-"}</Td>
+            <Td>{formatTemperatureSlot(report.shift)}</Td>
             <Td>{report.device_name}</Td>
             <Td>{Number(report.temperature).toFixed(1)} °C</Td>
             <Td>{report.note ?? "-"}</Td>

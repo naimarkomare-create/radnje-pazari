@@ -8,7 +8,7 @@ import { requireAdmin } from "@/lib/auth";
 import { todayInBelgrade } from "@/lib/date";
 import { PRODUCE_STORE_NAMES, sortProduceStores } from "@/lib/produce";
 import { createClient } from "@/lib/supabase/server";
-import type { Store, TemperatureDevice, TemperatureReport } from "@/lib/types";
+import type { Store, TemperatureReport } from "@/lib/types";
 
 export default async function AdminTemperaturePage({
   searchParams
@@ -26,8 +26,6 @@ export default async function AdminTemperaturePage({
       : typeof searchParams.store === "string"
         ? searchParams.store
         : "";
-  const selectedDevice = typeof searchParams.device_id === "string" ? searchParams.device_id : "";
-  const selectedShift = typeof searchParams.shift === "string" ? searchParams.shift : "";
   const page = positiveInteger(searchParams.page, 1);
   const storesQuery = supabase
     .from("stores")
@@ -41,26 +39,11 @@ export default async function AdminTemperaturePage({
 
   if (selectedDate) query = query.eq("report_date", selectedDate);
   if (selectedStore) query = query.eq("store_id", selectedStore);
-  let devicesQuery = supabase
-    .from("temperature_devices")
-    .select("id, store_id, name, device_type, min_allowed, max_allowed, active, sort_order, created_at, stores(id, name)")
-    .eq("active", true)
-    .order("sort_order")
-    .order("name");
-  if (selectedStore) {
-    devicesQuery = devicesQuery.eq("store_id", selectedStore);
-  }
-
-  if (selectedDevice) {
-    devicesQuery = devicesQuery.eq("id", selectedDevice);
-  }
-
   const from = (page - 1) * 30;
-  const [storesResult, reports, statusReports, devicesResult] = await Promise.all([
+  const [storesResult, reports, statusReports] = await Promise.all([
     storesQuery,
     query.range(from, from + 29),
-    supabase.from("temperature_reports").select("store_id").eq("report_date", selectedDate),
-    devicesQuery
+    supabase.from("temperature_reports").select("store_id").eq("report_date", selectedDate)
   ]);
   const stores = sortProduceStores((storesResult.data ?? []) as Store[]);
   const submittedStoreIds = new Set((statusReports.data ?? []).map((report) => report.store_id as string));
@@ -76,14 +59,7 @@ export default async function AdminTemperaturePage({
             Uređaji temperatura
           </Link>
         </div>
-        <TemperatureExportPanel
-          devices={(devicesResult.data ?? []) as unknown as TemperatureDevice[]}
-          month={selectedMonth}
-          selectedDevice={selectedDevice}
-          selectedShift={selectedShift}
-          selectedStore={selectedStore}
-          stores={stores}
-        />
+        <TemperatureExportPanel month={selectedMonth} />
         <AdminFilters
           resetHref="/admin/temperature"
           selectedDate={selectedDate}
@@ -95,7 +71,7 @@ export default async function AdminTemperaturePage({
           <StatusPanel title="Nisu poslali temperaturu" stores={missingStores} empty="Sve radnje su poslale temperaturu." />
         </section>
         <TemperatureTable
-          error={reports.error?.message ?? storesResult.error?.message ?? statusReports.error?.message ?? devicesResult.error?.message}
+          error={reports.error?.message ?? storesResult.error?.message ?? statusReports.error?.message}
           reports={(reports.data ?? []) as unknown as TemperatureReport[]}
         />
         <Pagination

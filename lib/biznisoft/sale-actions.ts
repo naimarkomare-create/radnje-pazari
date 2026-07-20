@@ -35,6 +35,15 @@ export type BizniSoftArticleSyncResult = {
   unresolvedArticleRows: number;
   uniqueArticleIdCount: number;
 };
+export type BizniSoftArticleBatchFailure = {
+  articleId: number;
+  code: "not_found" | "temporary_error" | "invalid_response";
+  message: string;
+};
+export type BizniSoftArticleBatchResult = {
+  articles: NormalizedBizniSoftArticle[];
+  failures: BizniSoftArticleBatchFailure[];
+};
 
 export async function fetchBizniSoftSaleActionsWithArticles() {
   const credentials = getBizniSoftCredentials();
@@ -72,6 +81,41 @@ export async function fetchBizniSoftArticlesForSaleActionIds(articleIds: number[
       barcode: null,
       code: null
     }))
+  );
+}
+
+export async function fetchBizniSoftArticleBatchForSaleActions(
+  articleIds: number[]
+): Promise<BizniSoftArticleBatchResult> {
+  const ids = Array.from(
+    new Set(
+      articleIds.filter(
+        (articleId) => Number.isInteger(articleId) && articleId > 0
+      )
+    )
+  );
+
+  if (ids.length === 0) {
+    return { articles: [], failures: [] };
+  }
+
+  const credentials = getBizniSoftCredentials();
+  const sessionHandle = await getSessionHandle(credentials);
+  const results = await mapWithConcurrency(ids, 3, async (articleId) =>
+    fetchBoundedBizniSoftArticle({
+      articleId,
+      sessionHandle,
+      soapUrl: credentials.soapUrl
+    })
+  );
+
+  return results.reduce<BizniSoftArticleBatchResult>(
+    (summary, result) => {
+      if (result.article) summary.articles.push(result.article);
+      if (result.failure) summary.failures.push(result.failure);
+      return summary;
+    },
+    { articles: [], failures: [] }
   );
 }
 
@@ -366,6 +410,151 @@ function normalizeSaleAction(raw: Record<string, unknown>): NormalizedBizniSoftS
     priority_level: toNumber(readField(raw, "PriorityLevel")),
     raw: sanitizeRawObject(raw)
   };
+}
+
+async function fetchBoundedBizniSoftArticle({
+  articleId,
+  sessionHandle,
+  soapUrl
+}: {
+  articleId: number;
+  sessionHandle: string;
+  soapUrl: string;
+}): Promise<{
+  article: NormalizedBizniSoftArticle | null;
+  failure: BizniSoftArticleBatchFailure | null;
+}> {
+  try {
+    const response = await withTemporaryRetry(() =>
+      getItem({
+        itemType: "itArticle",
+        jsonGetItemRequest: JSON.stringify({ ID: articleId }),
+        sessionHandle,
+        soapUrl
+      })
+    );
+    const article = articleFromSoapResponse(response, articleId);
+
+    if (article) {
+      return { article, failure: null };
+    }
+  } catch (error) {
+    if (isTemporaryBizniSoftError(error)) {
+      return {
+        article: null,
+        failure: {
+          articleId,
+          code: "temporary_error",
+          message: "BizniSoft servis nije odgovorio na vreme."
+        }
+      };
+    }
+  }
+
+  try {
+    const response = await getItems({
+      itemType: "itArticle",
+      jsonGetItemsRequest: JSON.stringify({ ID: articleId }),
+      limit: 1,
+      sessionHandle,
+      soapUrl
+    });
+    const article = articleFromSoapResponse(response, articleId);
+
+    if (article) {
+      return { article, failure: null };
+    }
+  } catch (error) {
+    return {
+      article: null,
+      failure: {
+        articleId,
+        code: isTemporaryBizniSoftError(error)
+          ? "temporary_error"
+          : "invalid_response",
+        message: isTemporaryBizniSoftError(error)
+          ? "BizniSoft servis nije odgovorio na vreme."
+          : "BizniSoft nije vratio ispravan odgovor za artikal."
+      }
+    };
+  }
+
+  return {
+    article: null,
+    failure: {
+      articleId,
+      code: "not_found",
+      message: "Artikal nije pronađen u BizniSoft servisu."
+    }
+  };
+}
+
+function articleFromSoapResponse(
+  response: string,
+  expectedArticleId: number
+) {
+  try {
+    const parsed = parsePossiblyNestedJson(response);
+    const rows = flattenBizniSoftRows(parsed);
+    const candidates = rows.length > 0 ? rows : isRecord(parsed) ? [parsed] : [];
+
+    return (
+      candidates
+        .map(normalizeArticle)
+        .find(
+          (article): article is NormalizedBizniSoftArticle =>
+            Boolean(article && article.article_id === expectedArticleId)
+        ) ?? null
+    );
+  } catch {
+    return null;
+  }
+}
+
+async function withTemporaryRetry<T>(operation: () => Promise<T>) {
+  try {
+    return await operation();
+  } catch (error) {
+    if (!isTemporaryBizniSoftError(error)) throw error;
+    await wait(400);
+    return operation();
+  }
+}
+
+function isTemporaryBizniSoftError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /timed out|timeout|fetch failed|econnreset|econnrefused|socket|http 502|http 503|http 504/i.test(
+    message
+  );
+}
+
+async function mapWithConcurrency<T, R>(
+  values: T[],
+  concurrency: number,
+  operation: (value: T) => Promise<R>
+) {
+  const results = new Array<R>(values.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < values.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await operation(values[index]);
+    }
+  }
+
+  await Promise.all(
+    Array.from(
+      { length: Math.min(Math.max(1, concurrency), values.length) },
+      () => worker()
+    )
+  );
+  return results;
+}
+
+function wait(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 async function fetchBizniSoftArticles({

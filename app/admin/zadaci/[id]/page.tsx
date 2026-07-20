@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DeleteTaskButton } from "@/app/admin/zadaci/[id]/DeleteTaskButton";
 import { DeleteTaskPhotoButton } from "@/app/admin/zadaci/[id]/DeleteTaskPhotoButton";
 import { PageHeader } from "@/components/PageHeader";
 import { requireAdmin } from "@/lib/auth";
@@ -29,9 +30,12 @@ export default async function AdminTaskDetailPage({ params }: { params: { id: st
     <>
       <PageHeader eyebrow="Pošalji zadatak" title={task?.title ?? "Zadatak"} />
       <div className="page-content">
-        <Link className="button-secondary w-fit" href="/admin/zadaci">
-          Nazad
-        </Link>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Link className="button-secondary w-fit" href="/admin/zadaci">
+            Nazad
+          </Link>
+          {task ? <DeleteTaskButton taskId={task.id} /> : null}
+        </div>
         {result.error || !task ? (
           <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{result.error?.message ?? "Zadatak nije pronađen."}</p>
         ) : (

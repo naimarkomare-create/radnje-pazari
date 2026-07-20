@@ -1,3 +1,4 @@
+import { formatTemperatureSlot } from "@/lib/temperature-slots";
 import type { DailyRevenueReport, ProduceRequest, TemperatureReport } from "@/lib/types";
 
 export function DailyReportsList({
@@ -43,8 +44,8 @@ export function TemperatureReportsList({
             <p className="font-semibold text-ink">{report.device_name}</p>
             <p className="mt-1 text-sm text-slate-500">
               {showStore
-                ? `${report.stores?.name ?? "Radnja"} · ${report.report_date} · ${report.shift ?? "Bez smene"}`
-                : `${report.report_date} · ${report.shift ?? "Bez smene"}`}
+                ? `${report.stores?.name ?? "Radnja"} · ${report.report_date} · ${formatTemperatureSlot(report.shift)}`
+                : `${report.report_date} · ${formatTemperatureSlot(report.shift)}`}
             </p>
           </div>
           <span className="shrink-0 text-sm font-semibold text-slate-700">{Number(report.temperature).toFixed(1)} °C</span>

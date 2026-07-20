@@ -2,7 +2,7 @@ import { DashboardShell, type DashboardNavItem } from "@/components/DashboardShe
 import { requireAdmin } from "@/lib/auth";
 
 const navigation: DashboardNavItem[] = [
-  { href: "/admin", label: "Početna" },
+  { href: "/admin", label: "Promet uživo" },
   { href: "/admin/pazari", label: "Pazari" },
   { href: "/admin/ispravka-pazara", label: "Ispravka pazara" },
   { href: "/admin/temperature", label: "Temperature" },

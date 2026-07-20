@@ -42,62 +42,63 @@ export function ProduceOrderForm({ items, today }: { items: ProduceItem[]; today
 
       <input name="items" readOnly type="hidden" value={JSON.stringify(selectedItems)} />
 
-      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[650px] border-collapse text-left text-sm">
-            <thead className="bg-slate-50">
-              <tr>
-                <Th>Artikal</Th>
-                <Th>Jedinica</Th>
-                <Th>Količina</Th>
-                <Th>Smanji</Th>
-                <Th>Povećaj</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => {
-                const quantity = quantities[item.id] ?? 0;
+      <section className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+        <div className="hidden grid-cols-[minmax(0,1fr)_7rem_15rem] gap-4 border-b border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700 md:grid">
+          <span>Artikal</span>
+          <span>Jedinica</span>
+          <span>Količina</span>
+        </div>
+        <div className="space-y-3 p-3 md:space-y-0 md:p-0">
+          {items.map((item) => {
+            const quantity = quantities[item.id] ?? 0;
 
-                return (
-                  <tr key={item.id}>
-                    <td className="border-b border-slate-100 px-4 py-3 font-semibold text-ink">{item.name}</td>
-                    <td className="border-b border-slate-100 px-4 py-3 text-slate-600">{item.unit}</td>
-                    <td className="border-b border-slate-100 px-4 py-2">
-                      <input
-                        aria-label={`Količina ${item.name}`}
-                        className="h-12 w-24 rounded-md border border-slate-300 px-3 text-center text-base font-semibold outline-none focus:border-leaf focus:ring-2 focus:ring-leaf/20"
-                        min="0"
-                        onChange={(event) => updateQuantity(item.id, Number(event.target.value))}
-                        step="1"
-                        type="number"
-                        value={quantity}
-                      />
-                    </td>
-                    <td className="border-b border-slate-100 px-4 py-2">
-                      <button
-                        aria-label={`Smanji ${item.name}`}
-                        className="quantity-button"
-                        onClick={() => updateQuantity(item.id, quantity - 1)}
-                        type="button"
-                      >
-                        −
-                      </button>
-                    </td>
-                    <td className="border-b border-slate-100 px-4 py-2">
-                      <button
-                        aria-label={`Povećaj ${item.name}`}
-                        className="quantity-button"
-                        onClick={() => updateQuantity(item.id, quantity + 1)}
-                        type="button"
-                      >
-                        +
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+            return (
+              <div
+                className="grid min-w-0 gap-3 rounded-md border border-slate-200 p-4 last:border-b md:grid-cols-[minmax(0,1fr)_7rem_15rem] md:items-center md:gap-4 md:rounded-none md:border-x-0 md:border-t-0"
+                key={item.id}
+              >
+                <p className="min-w-0 break-words text-base font-bold text-ink md:text-sm">
+                  {item.name}
+                </p>
+                <p className="text-sm text-slate-600">
+                  <span className="font-semibold md:hidden">Jedinica mere: </span>
+                  {item.unit}
+                </p>
+                <div className="min-w-0">
+                  <span className="label mb-2 md:hidden">Količina</span>
+                  <div className="grid min-w-0 grid-cols-[3rem_minmax(0,1fr)_3rem] gap-2">
+                    <button
+                      aria-label={`Smanji ${item.name}`}
+                      className="quantity-button"
+                      onClick={() => updateQuantity(item.id, quantity - 1)}
+                      type="button"
+                    >
+                      −
+                    </button>
+                    <input
+                      aria-label={`Količina ${item.name}`}
+                      className="h-12 min-w-0 w-full rounded-md border border-slate-300 px-2 text-center text-base font-semibold outline-none transition focus:border-leaf focus:ring-2 focus:ring-leaf/20"
+                      inputMode="numeric"
+                      min="0"
+                      onChange={(event) => updateQuantity(item.id, Number(event.target.value))}
+                      onWheel={(event) => event.currentTarget.blur()}
+                      step="1"
+                      type="number"
+                      value={quantity}
+                    />
+                    <button
+                      aria-label={`Povećaj ${item.name}`}
+                      className="quantity-button"
+                      onClick={() => updateQuantity(item.id, quantity + 1)}
+                      type="button"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </section>
 
@@ -109,10 +110,6 @@ export function ProduceOrderForm({ items, today }: { items: ProduceItem[]; today
       <ProduceSubmitButton disabled={selectedItems.length === 0} />
     </form>
   );
-}
-
-function Th({ children }: { children: React.ReactNode }) {
-  return <th className="border-b border-slate-200 px-4 py-3 font-bold text-slate-700">{children}</th>;
 }
 
 function ProduceSubmitButton({ disabled }: { disabled: boolean }) {
