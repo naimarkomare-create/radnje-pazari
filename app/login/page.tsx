@@ -2,7 +2,11 @@ import { redirect } from "next/navigation";
 import { dashboardPathFor, getCurrentProfile } from "@/lib/auth";
 import { LoginForm } from "@/app/login/LoginForm";
 
-export default async function LoginPage() {
+export default async function LoginPage({
+  searchParams
+}: {
+  searchParams?: { reason?: string };
+}) {
   const profile = await getCurrentProfile();
 
   if (profile) {
@@ -16,7 +20,13 @@ export default async function LoginPage() {
           <p className="text-sm font-semibold uppercase tracking-wide text-leaf">Interna aplikacija</p>
           <h1 className="mt-2 text-3xl font-bold text-ink">Prijava</h1>
         </div>
-        <LoginForm />
+        <LoginForm
+          initialMessage={
+            searchParams?.reason === "session_expired"
+              ? "Sesija je istekla. Prijavite se ponovo."
+              : ""
+          }
+        />
       </div>
     </main>
   );

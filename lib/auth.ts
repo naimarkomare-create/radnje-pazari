@@ -1,9 +1,20 @@
 import { redirect } from "next/navigation";
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
+import {
+  isConfirmedInvalidSessionError,
+  safeAuthErrorDetails
+} from "@/lib/supabase/auth-errors";
 import type { Profile } from "@/lib/types";
 
 type ServerClient = ReturnType<typeof createClient>;
+
+export class AuthenticationTemporarilyUnavailableError extends Error {
+  constructor() {
+    super("Provera sesije trenutno nije dostupna.");
+    this.name = "AuthenticationTemporarilyUnavailableError";
+  }
+}
 
 async function loadCurrentProfile(supabase: ServerClient) {
   const {
@@ -11,7 +22,18 @@ async function loadCurrentProfile(supabase: ServerClient) {
     error: userError
   } = await supabase.auth.getUser();
 
-  if (userError || !user) {
+  if (userError) {
+    if (isConfirmedInvalidSessionError(userError)) {
+      return null;
+    }
+
+    console.error("Supabase authentication check temporarily failed.", {
+      authError: safeAuthErrorDetails(userError)
+    });
+    throw new AuthenticationTemporarilyUnavailableError();
+  }
+
+  if (!user) {
     return null;
   }
 
@@ -21,7 +43,18 @@ async function loadCurrentProfile(supabase: ServerClient) {
     .eq("id", user.id)
     .single();
 
-  if (error || !data) {
+  if (error) {
+    if (error.code === "PGRST116") {
+      return null;
+    }
+
+    console.error("Supabase profile lookup temporarily failed.", {
+      code: error.code ?? null
+    });
+    throw new AuthenticationTemporarilyUnavailableError();
+  }
+
+  if (!data) {
     return null;
   }
 
