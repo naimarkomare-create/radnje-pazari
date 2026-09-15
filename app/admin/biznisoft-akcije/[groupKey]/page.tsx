@@ -1,8 +1,10 @@
+import { dataErrorMessage } from "@/lib/security/validation";
 import Link from "next/link";
 import { CreateGroupTaskButton } from "@/app/admin/biznisoft-akcije/[groupKey]/CreateGroupTaskButton";
 import { PageHeader } from "@/components/PageHeader";
 import { Pagination } from "@/components/Pagination";
 import { requireAdmin } from "@/lib/auth";
+import { positiveInteger } from "@/lib/pagination";
 import {
   actionStatusFromDates,
   articleText,
@@ -38,7 +40,7 @@ export default async function BizniSoftActionDetailPage({
   const stores = sortProduceStores((storesResult.data ?? []) as Store[]);
   let rows: BizniSoftSaleActionWithArticle[] = [];
   let totalRows = 0;
-  let error = storesResult.error?.message;
+  let error = dataErrorMessage(storesResult.error);
 
   if (!parts) {
     error = error ?? "Akcija nije ispravna.";
@@ -70,7 +72,7 @@ export default async function BizniSoftActionDetailPage({
     const rowsResult = await query.range(from, from + 49);
     rows = (rowsResult.data ?? []) as unknown as BizniSoftSaleActionWithArticle[];
     totalRows = rowsResult.count ?? rows.length;
-    error = error ?? rowsResult.error?.message;
+    error = error ?? dataErrorMessage(rowsResult.error);
   }
 
   return (
@@ -296,10 +298,6 @@ function safeDecode(value: string) {
   }
 }
 
-function positiveInteger(value: string | undefined, fallback: number) {
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
-}
 
 function Th({ children }: { children: React.ReactNode }) {
   return <th className="border-b border-slate-200 px-3 py-2 font-bold text-slate-700">{children}</th>;

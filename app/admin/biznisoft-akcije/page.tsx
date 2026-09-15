@@ -1,8 +1,10 @@
+import { dataErrorMessage } from "@/lib/security/validation";
 import Link from "next/link";
 import { BizniSoftActionButtons } from "@/app/admin/biznisoft-akcije/BizniSoftActionButtons";
 import { PageHeader } from "@/components/PageHeader";
 import { Pagination } from "@/components/Pagination";
 import { requireAdmin } from "@/lib/auth";
+import { positiveInteger } from "@/lib/pagination";
 import {
   actionStatusFromDates,
   formatDateTime,
@@ -87,7 +89,7 @@ export default async function AdminBizniSoftActionsPage({ searchParams }: { sear
     resolved_article_count: Number(group.resolved_article_count)
   }));
   const totalCount = groupsResult.count ?? groups.length;
-  const error = storesResult.error?.message ?? groupsResult.error?.message;
+  const error = dataErrorMessage(storesResult.error) ?? dataErrorMessage(groupsResult.error);
 
   return (
     <>
@@ -253,10 +255,6 @@ function nextDate(value: string) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-function positiveInteger(value: string | undefined, fallback: number) {
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
-}
 
 function Th({ children }: { children: React.ReactNode }) {
   return <th className="border-b border-slate-200 px-3 py-2 font-bold text-slate-700">{children}</th>;

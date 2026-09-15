@@ -1,3 +1,4 @@
+import { dataErrorMessage } from "@/lib/security/validation";
 import { ProduceMatrixTable } from "@/app/admin/trebovanja/ProduceMatrixTable";
 import { AdminFilters } from "@/components/AdminFilters";
 import { PageHeader } from "@/components/PageHeader";
@@ -44,14 +45,13 @@ export default async function AdminProduceRequestsPage({
       <PageHeader eyebrow="Admin pregled" title="Trebovanje voća i povrća" />
       <div className="page-content">
         <AdminFilters
-          resetHref="/admin/trebovanja"
           selectedDate={selectedDate}
           selectedStore={selectedStore}
           stores={stores}
         />
         {storesResult.error || batchesResult.error ? (
           <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-            {storesResult.error?.message ?? batchesResult.error?.message}
+            {dataErrorMessage(storesResult.error) ?? dataErrorMessage(batchesResult.error)}
           </p>
         ) : null}
         <ProduceMatrixTable rows={rows} selectedDate={selectedDate} stores={stores} />

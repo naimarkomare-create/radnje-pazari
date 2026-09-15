@@ -1,3 +1,4 @@
+import { dataErrorMessage } from "@/lib/security/validation";
 import { DailyRevenueForm } from "@/app/store/StoreForms";
 import { StoreRevenueEditList } from "@/app/store/pazari/StoreRevenueEditList";
 import { PageHeader } from "@/components/PageHeader";
@@ -31,7 +32,7 @@ export default async function StoreDailyRevenuePage() {
           today={today}
         />
         <StoreRevenueEditList
-          error={result.error?.message}
+          error={dataErrorMessage(result.error)}
           reports={previousReports}
         />
       </div>

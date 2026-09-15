@@ -50,7 +50,7 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error);
+main().catch(() => {
+  console.error("BizniSoft field description request failed. Check the service URL and connection.");
   process.exit(1);
 });

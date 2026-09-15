@@ -1,5 +1,7 @@
 "use server";
 
+import { actionError, publicErrorMessage } from "@/lib/security/validation";
+
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import {
@@ -30,12 +32,12 @@ export async function createSaleActionTasks(): Promise<ActionState & { created?:
       .select("*")
       .or(`chapter_to.is.null,chapter_to.gte.${start}`);
 
-    if (rowsResult.error) return { ok: false, message: rowsResult.error.message };
+    if (rowsResult.error) return { ok: false, message: publicErrorMessage(rowsResult.error) };
 
     const groups = groupSaleActions((rowsResult.data ?? []) as unknown as BizniSoftSaleActionWithArticle[]);
     return createTasksForGroups(groups.map((group) => group.groupKey));
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Greška pri kreiranju zadataka." };
+    return { ok: false, message: actionError(error, "Greška pri kreiranju zadataka.") };
   }
 }
 
@@ -44,7 +46,7 @@ export async function createSaleActionGroupTask(groupKey: string): Promise<Actio
     await requireAdmin();
     return createTasksForGroups([decodeURIComponent(groupKey)]);
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Greška pri kreiranju zadatka." };
+    return { ok: false, message: actionError(error, "Greška pri kreiranju zadatka.") };
   }
 }
 
@@ -56,7 +58,7 @@ async function createTasksForGroups(groupKeys: string[]): Promise<ActionState & 
     .select("id, name, latitude, longitude, address, created_at")
     .in("name", [...PRODUCE_STORE_NAMES]);
 
-  if (storesResult.error) return { ok: false, message: storesResult.error.message };
+  if (storesResult.error) return { ok: false, message: publicErrorMessage(storesResult.error) };
 
   const stores = sortProduceStores((storesResult.data ?? []) as Store[]);
   const storesByStorageId = new Map(
@@ -78,7 +80,7 @@ async function createTasksForGroups(groupKeys: string[]): Promise<ActionState & 
     query = parts.chapter_to === null ? query.is("chapter_to", null) : query.eq("chapter_to", parts.chapter_to);
 
     const rowsResult = await query;
-    if (rowsResult.error) return { ok: false, message: rowsResult.error.message };
+    if (rowsResult.error) return { ok: false, message: publicErrorMessage(rowsResult.error) };
 
     const rows = ((rowsResult.data ?? []) as unknown as BizniSoftSaleActionWithArticle[]).filter(
       (row) => (row.loyalty_level ?? 0) === parts.loyalty_level && (row.priority_level ?? 0) === parts.priority_level
@@ -107,7 +109,7 @@ async function createTasksForGroups(groupKeys: string[]): Promise<ActionState & 
       plans.map((plan) => plan.sourceKey)
     );
 
-  if (existingResult.error) return { ok: false, message: existingResult.error.message };
+  if (existingResult.error) return { ok: false, message: publicErrorMessage(existingResult.error) };
 
   const existingKeys = new Set((existingResult.data ?? []).map((task) => task.source_key as string));
   let created = 0;
@@ -136,7 +138,7 @@ async function createTasksForGroups(groupKeys: string[]): Promise<ActionState & 
       .select("id")
       .single();
 
-    if (taskError || !task) return { ok: false, message: taskError?.message ?? "Zadatak nije kreiran.", created, skipped };
+    if (taskError || !task) return { ok: false, message: "Zadatak nije kreiran.", created, skipped };
 
     const { error: assignmentError } = await supabase.from("store_task_assignments").insert(
       plan.storeIds.map((storeId) => ({
@@ -145,7 +147,7 @@ async function createTasksForGroups(groupKeys: string[]): Promise<ActionState & 
       }))
     );
 
-    if (assignmentError) return { ok: false, message: assignmentError.message, created, skipped };
+    if (assignmentError) return { ok: false, message: publicErrorMessage(assignmentError), created, skipped };
 
     created += 1;
     existingKeys.add(plan.sourceKey);

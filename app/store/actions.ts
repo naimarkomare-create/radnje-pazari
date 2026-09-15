@@ -1,8 +1,10 @@
 "use server";
 
+import { InputError, actionError, publicErrorMessage, isUuid } from "@/lib/security/validation";
+
 import { revalidatePath } from "next/cache";
 import { requireStore } from "@/lib/auth";
-import { todayInBelgrade } from "@/lib/date";
+import { isValidIsoDate, todayInBelgrade } from "@/lib/date";
 import {
   calculateRevenueTotal,
   canStoreEditRevenue,
@@ -23,18 +25,7 @@ function getRequiredText(formData: FormData, key: string, label: string) {
   const value = getText(formData, key);
 
   if (!value) {
-    throw new Error(`${label} je obavezno polje.`);
-  }
-
-  return value;
-}
-
-function getRequiredNumber(formData: FormData, key: string, label: string) {
-  const raw = getRequiredText(formData, key, label);
-  const value = Number(raw);
-
-  if (!Number.isFinite(value)) {
-    throw new Error(`${label} mora biti broj.`);
+    throw new InputError(`${label} je obavezno polje.`);
   }
 
   return value;
@@ -44,13 +35,13 @@ function getRequiredTemperature(formData: FormData) {
   const raw = getRequiredText(formData, "temperature", "Temperatura").replace(",", ".");
 
   if (raw === "-" || raw === "+" || raw === "." || raw === "-." || raw === "+.") {
-    throw new Error("Unesite ispravnu temperaturu.");
+    throw new InputError("Unesite ispravnu temperaturu.");
   }
 
   const value = Number(raw);
 
   if (!Number.isFinite(value)) {
-    throw new Error("Unesite ispravnu temperaturu.");
+    throw new InputError("Unesite ispravnu temperaturu.");
   }
 
   return value;
@@ -66,7 +57,7 @@ function getNumberOrZero(formData: FormData, key: string, label: string) {
   const value = Number(raw);
 
   if (!Number.isFinite(value)) {
-    throw new Error(`${label} mora biti broj.`);
+    throw new InputError(`${label} mora biti broj.`);
   }
 
   return value;
@@ -82,9 +73,11 @@ function getRevenueValues(formData: FormData) {
     REVENUE_FIELDS.map((field) => [field.name, getNumberOrZero(formData, field.name, field.label)])
   ) as Record<RevenueFieldName, number>;
 
+  const total = calculateRevenueTotal(values);
+  if (!Number.isFinite(total)) throw new InputError("Ukupno mora biti konačan broj.");
   return {
     ...values,
-    total_revenue: calculateRevenueTotal(values)
+    total_revenue: total
   };
 }
 
@@ -92,7 +85,7 @@ function assertTodayRevenueRequest(formData: FormData, today: string) {
   const suppliedDate = getText(formData, "report_date");
 
   if (suppliedDate && suppliedDate !== today) {
-    throw new Error("Pazar se može uneti samo za današnji datum.");
+    throw new InputError("Pazar se može uneti samo za današnji datum.");
   }
 }
 
@@ -108,7 +101,7 @@ function dailyRevenueErrorMessage(error: { code?: string; message: string }) {
     return "Rok za izmenu je istekao. Kontaktirajte admina.";
   }
 
-  return error.message;
+  return publicErrorMessage(error);
 }
 
 export async function submitDailyRevenue(
@@ -129,7 +122,7 @@ export async function submitDailyRevenue(
       .limit(1);
 
     if (existingError) {
-      return { ok: false, message: existingError.message };
+      return { ok: false, message: publicErrorMessage(existingError) };
     }
 
     if ((existing ?? []).length > 0) {
@@ -156,7 +149,7 @@ export async function submitDailyRevenue(
     revalidatePath("/store/moji-unosi");
     return { ok: true, message: "Pazar za danas je sačuvan." };
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Greška pri slanju." };
+    return { ok: false, message: actionError(error, "Greška pri slanju.") };
   }
 }
 
@@ -167,6 +160,7 @@ export async function updateStoreDailyRevenue(
   try {
     const profile = await requireStore();
     const reportId = getRequiredText(formData, "id", "Pazar");
+    if (!isUuid(reportId)) throw new InputError("Pazar nije ispravan.");
     const supabase = createClient();
     const today = todayInBelgrade();
     assertTodayRevenueRequest(formData, today);
@@ -230,7 +224,7 @@ export async function updateStoreDailyRevenue(
     revalidatePath("/admin/ispravka-pazara");
     return { ok: true, message: "Pazar za danas je sačuvan." };
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Greška pri čuvanju izmena." };
+    return { ok: false, message: actionError(error, "Greška pri čuvanju izmena.") };
   }
 }
 
@@ -243,6 +237,10 @@ export async function submitTemperature(
     const supabase = createClient();
     const deviceId = getRequiredText(formData, "device_id", "Naziv uređaja");
     const shift = getRequiredText(formData, "shift", "Smena");
+    const reportDate = getRequiredText(formData, "report_date", "Datum");
+    if (!isUuid(deviceId) || !isValidIsoDate(reportDate)) {
+      throw new InputError("Uređaj ili datum nije ispravan.");
+    }
 
     if (!isTemperatureSlotValue(shift)) {
       return { ok: false, message: "Izabrana smena nije ispravna." };
@@ -263,7 +261,7 @@ export async function submitTemperature(
     const { error } = await supabase.from("temperature_reports").insert({
       store_id: profile.store_id,
       user_id: profile.id,
-      report_date: getRequiredText(formData, "report_date", "Datum"),
+      report_date: reportDate,
       shift,
       device_id: device.id,
       device_name: device.name,
@@ -279,14 +277,14 @@ export async function submitTemperature(
         };
       }
 
-      return { ok: false, message: error.message };
+      return { ok: false, message: publicErrorMessage(error) };
     }
 
     revalidatePath("/store/temperature");
     revalidatePath("/store/moji-unosi");
     return successState;
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Greška pri slanju." };
+    return { ok: false, message: actionError(error, "Greška pri slanju.") };
   }
 }
 
@@ -298,10 +296,12 @@ export async function submitProduceRequest(
     await requireStore();
     const supabase = createClient();
     const rawItems = getRequiredText(formData, "items", "Artikli");
+    const requestDate = getRequiredText(formData, "request_date", "Datum");
+    if (!isValidIsoDate(requestDate)) throw new InputError("Datum nije ispravan.");
     const parsedItems: unknown = JSON.parse(rawItems);
 
     if (!Array.isArray(parsedItems)) {
-      throw new Error("Artikli nisu ispravno poslati.");
+      throw new InputError("Artikli nisu ispravno poslati.");
     }
 
     const items = parsedItems
@@ -310,7 +310,7 @@ export async function submitProduceRequest(
         const produceItemId = "produce_item_id" in item ? String(item.produce_item_id) : "";
         const quantity = "quantity" in item ? Number(item.quantity) : 0;
 
-        if (!/^[0-9a-f-]{36}$/i.test(produceItemId) || !Number.isFinite(quantity) || quantity <= 0) {
+        if (!isUuid(produceItemId) || !Number.isFinite(quantity) || quantity <= 0) {
           return null;
         }
 
@@ -323,13 +323,13 @@ export async function submitProduceRequest(
     }
 
     const { error } = await supabase.rpc("submit_produce_request", {
-      p_request_date: getRequiredText(formData, "request_date", "Datum"),
+      p_request_date: requestDate,
       p_note: getText(formData, "note"),
       p_items: items
     });
 
     if (error) {
-      return { ok: false, message: error.message };
+      return { ok: false, message: publicErrorMessage(error) };
     }
 
     revalidatePath("/store/trebovanja");
@@ -337,6 +337,6 @@ export async function submitProduceRequest(
     revalidatePath("/admin/trebovanja");
     return { ok: true, message: "Uspešno poslato trebovanje" };
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Greška pri slanju." };
+    return { ok: false, message: actionError(error, "Greška pri slanju.") };
   }
 }

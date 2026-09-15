@@ -1,7 +1,12 @@
+import { readJsonObject, publicErrorMessage } from "@/lib/security/validation";
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentProfileWithClient } from "@/lib/auth";
+import { authorizeApi } from "@/lib/security/api";
+import { positiveInteger } from "@/lib/pagination";
+import { isValidIsoDate } from "@/lib/date";
+import { isUuid } from "@/lib/security/validation";
 import {
   distinctSupplierNames,
+  returnStatuses,
   RETURN_PROPOSAL_COLUMNS,
   todayIsoDate
 } from "@/lib/return-proposals";
@@ -12,9 +17,10 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   const supabase = createClient();
-  const profile = await getCurrentProfileWithClient(supabase);
+  const authorization = await authorizeApi(supabase, false);
+  if (!authorization.ok) return authorization.response;
+  const { profile } = authorization;
 
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const searchParams = request.nextUrl.searchParams;
   const page = positiveInteger(searchParams.get("page"), 1);
@@ -32,14 +38,16 @@ export async function GET(request: NextRequest) {
   }
 
   const status = searchParams.get("status");
+  if (status && !returnStatuses.includes(status as ReturnProposal["status"])) return NextResponse.json({ error: "Status nije ispravan." }, { status: 400 });
   if (status) query = query.eq("status", status);
 
   const date = searchParams.get("date");
+  if (date && !isValidIsoDate(date)) return NextResponse.json({ error: "Datum nije ispravan." }, { status: 400 });
   if (date) query = query.eq("return_date", date);
 
   const from = (page - 1) * pageSize;
   const { data, error, count } = await query.range(from, from + pageSize - 1);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: publicErrorMessage(error) }, { status: 500 });
 
   const proposals = (
     (data ?? []) as unknown as Array<
@@ -67,14 +75,18 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const supabase = createClient();
-  const profile = await getCurrentProfileWithClient(supabase);
+  const authorization = await authorizeApi(supabase, false);
+  if (!authorization.ok) return authorization.response;
+  const { profile } = authorization;
 
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await request.json().catch(() => ({}));
+  const body = await readJsonObject(request);
   const storeId = profile.role === "admin" ? String(body.store_id ?? "") : profile.store_id;
 
-  if (!storeId) return NextResponse.json({ error: "Radnja je obavezna." }, { status: 400 });
+  if (!isUuid(storeId)) return NextResponse.json({ error: "Radnja je obavezna." }, { status: 400 });
+  if (body.return_date !== undefined && (typeof body.return_date !== "string" || !isValidIsoDate(body.return_date))) {
+    return NextResponse.json({ error: "Datum nije ispravan." }, { status: 400 });
+  }
 
   const { data, error } = await supabase
     .from("return_proposals")
@@ -89,7 +101,7 @@ export async function POST(request: NextRequest) {
     .select(`${RETURN_PROPOSAL_COLUMNS}, stores(id, name)`)
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: publicErrorMessage(error) }, { status: 500 });
 
   await supabase.from("return_proposal_history").insert({
     action: "created",
@@ -108,9 +120,4 @@ export async function POST(request: NextRequest) {
     },
     { status: 201 }
   );
-}
-
-function positiveInteger(value: string | null, fallback: number) {
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }

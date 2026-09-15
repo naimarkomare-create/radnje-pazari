@@ -1,3 +1,4 @@
+import { dataErrorMessage } from "@/lib/security/validation";
 import { AddDeviceForm, DeviceActiveButton, DeviceEditForm } from "@/app/admin/temperature/uredjaji/DeviceForms";
 import { PageHeader } from "@/components/PageHeader";
 import { requireAdmin } from "@/lib/auth";
@@ -25,7 +26,7 @@ export default async function AdminTemperatureDevicesPage() {
       <div className="page-content">
         {storesResult.error || devicesResult.error ? (
           <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-            {storesResult.error?.message ?? devicesResult.error?.message}
+            {dataErrorMessage(storesResult.error) ?? dataErrorMessage(devicesResult.error)}
           </p>
         ) : null}
         <AddDeviceForm stores={stores} />

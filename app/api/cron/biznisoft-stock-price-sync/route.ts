@@ -1,3 +1,5 @@
+import { withIntegrationLock } from "@/lib/security/sync-lock";
+import { publicErrorMessage } from "@/lib/security/validation";
 import { NextRequest, NextResponse } from "next/server";
 import { syncBiznisoftStockPrices } from "@/lib/biznisoft/stock-price-sync";
 import { deleteExpiredReturnDrafts } from "@/lib/returns/delete-expired-return-drafts";
@@ -18,39 +20,40 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let returnDraftCleanup:
-    | Awaited<ReturnType<typeof deleteExpiredReturnDrafts>>
-    | { error: string; success: false };
+  return withIntegrationLock(async () => {
 
-  try {
-    returnDraftCleanup = await deleteExpiredReturnDrafts();
-  } catch (error) {
-    console.error("Daily return draft cleanup failed.", {
-      message: error instanceof Error ? error.message : "Unknown error"
-    });
-    returnDraftCleanup = {
-      error: "Brisanje starih nacrta najava povrata nije uspelo.",
-      success: false
-    };
-  }
+    let returnDraftCleanup:
+      | Awaited<ReturnType<typeof deleteExpiredReturnDrafts>>
+      | { error: string; success: false };
 
-  try {
-    const result = await syncBiznisoftStockPrices();
-    return NextResponse.json({
-      ...result,
-      autoCreateTasks: process.env.AUTO_CREATE_PRICE_TASKS === "true",
-      returnDraftCleanup
-    });
-  } catch (error) {
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "BizniSoft stock price cron failed.",
+    try {
+      returnDraftCleanup = await deleteExpiredReturnDrafts();
+    } catch (error) {
+      console.error("Daily return draft cleanup failed.", {
+        message: error instanceof Error ? error.message : "Unknown error"
+      });
+      returnDraftCleanup = {
+        error: "Brisanje starih nacrta najava povrata nije uspelo.",
+        success: false
+      };
+    }
+
+    try {
+      const result = await syncBiznisoftStockPrices();
+      return NextResponse.json({
+        ...result,
+        autoCreateTasks: process.env.AUTO_CREATE_PRICE_TASKS === "true",
         returnDraftCleanup
-      },
-      { status: 500 }
-    );
-  }
+      });
+    } catch (error) {
+      return NextResponse.json(
+        {
+          error:
+            publicErrorMessage(error),
+          returnDraftCleanup
+        },
+        { status: 500 }
+      );
+    }
+  });
 }

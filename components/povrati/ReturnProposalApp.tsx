@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { SupplierSearchSelect } from "@/components/povrati/SupplierSearchSelect";
+import { formatBelgradeDateTime as formatDateTime } from "@/lib/date";
 import {
   distinctSupplierNames,
   formatReturnDate,
@@ -775,12 +776,4 @@ function toSummary(proposal: ReturnProposal): ReturnProposalSummary {
     supplier_names: distinctSupplierNames(proposal.return_proposal_items ?? []),
     updated_at: proposal.updated_at
   };
-}
-
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("sr-RS", {
-    dateStyle: "short",
-    timeStyle: "short",
-    timeZone: "Europe/Belgrade"
-  }).format(new Date(value));
 }

@@ -1,5 +1,7 @@
+import { readJsonObject, publicErrorMessage, isUuid } from "@/lib/security/validation";
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentProfileWithClient } from "@/lib/auth";
+import { authorizeApi } from "@/lib/security/api";
+import { isValidIsoDate } from "@/lib/date";
 import {
   assertReturnStatus,
   canEditReturnProposal,
@@ -14,9 +16,11 @@ export const dynamic = "force-dynamic";
 
 export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createClient();
-  const profile = await getCurrentProfileWithClient(supabase);
+  const authorization = await authorizeApi(supabase, false);
+  if (!authorization.ok) return authorization.response;
+  const { profile } = authorization;
+  if (!isUuid(params.id)) return NextResponse.json({ error: "Najava nije pronađena." }, { status: 404 });
 
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { data, error } = await supabase
     .from("return_proposals")
@@ -24,7 +28,7 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
     .eq("id", params.id)
     .single();
 
-  if (error || !data) return NextResponse.json({ error: error?.message ?? "Najava nije pronađena." }, { status: 404 });
+  if (error || !data) return NextResponse.json({ error: "Najava nije pronađena." }, { status: 404 });
 
   const proposal = data as unknown as ReturnProposal;
   if (!canViewReturnProposal(profile, proposal)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -36,15 +40,17 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
     .order("created_at", { ascending: false })
     .limit(50);
 
-  if (itemsError) return NextResponse.json({ error: itemsError.message }, { status: 500 });
+  if (itemsError) return NextResponse.json({ error: publicErrorMessage(itemsError) }, { status: 500 });
   return NextResponse.json({ proposal: { ...proposal, item_count: count ?? items?.length ?? 0, return_proposal_items: items ?? [] } });
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createClient();
-  const profile = await getCurrentProfileWithClient(supabase);
+  const authorization = await authorizeApi(supabase, false);
+  if (!authorization.ok) return authorization.response;
+  const { profile } = authorization;
+  if (!isUuid(params.id)) return NextResponse.json({ error: "Najava nije pronađena." }, { status: 404 });
 
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { data: existing, error: existingError } = await supabase
     .from("return_proposals")
@@ -52,17 +58,20 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     .eq("id", params.id)
     .single();
 
-  if (existingError || !existing) return NextResponse.json({ error: existingError?.message ?? "Najava nije pronađena." }, { status: 404 });
+  if (existingError || !existing) return NextResponse.json({ error: "Najava nije pronađena." }, { status: 404 });
 
   const proposal = existing as ReturnProposal;
   if (!canEditReturnProposal(profile, proposal)) return NextResponse.json({ error: "Najava više nije otvorena za izmene." }, { status: 403 });
 
-  const body = await request.json().catch(() => ({}));
+  const body = await readJsonObject(request);
   const update: Record<string, unknown> = {
     updated_by: profile.id
   };
 
   if (typeof body.note === "string") update.note = body.note;
+  if (body.return_date !== undefined && (typeof body.return_date !== "string" || !isValidIsoDate(body.return_date))) {
+    return NextResponse.json({ error: "Datum nije ispravan." }, { status: 400 });
+  }
   if (typeof body.return_date === "string") update.return_date = body.return_date;
   if (typeof body.status === "string") {
     let status;
@@ -85,7 +94,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     .select(`${RETURN_PROPOSAL_COLUMNS}, stores(id, name)`)
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: publicErrorMessage(error) }, { status: 500 });
 
   await supabase.from("return_proposal_history").insert({
     action: "proposal_updated",

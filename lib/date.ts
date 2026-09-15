@@ -7,6 +7,16 @@ const belgradeDateFormatter = new Intl.DateTimeFormat("en-CA", {
   day: "2-digit"
 });
 
+const belgradeDateTimeFormatter = new Intl.DateTimeFormat("sr-RS", {
+  dateStyle: "short",
+  timeStyle: "short",
+  timeZone: BELGRADE_TIME_ZONE
+});
+
+export function formatBelgradeDateTime(value: string) {
+  return belgradeDateTimeFormatter.format(new Date(value));
+}
+
 export function todayInBelgrade(now = new Date()) {
   const parts = belgradeDateFormatter.formatToParts(now);
   const year = parts.find((part) => part.type === "year")?.value;

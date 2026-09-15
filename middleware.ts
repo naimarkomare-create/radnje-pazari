@@ -1,5 +1,6 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { authCookieOptions } from "@/lib/supabase/cookie-options";
 import {
   isConfirmedInvalidSessionError,
   isSupabaseAuthCookieName
@@ -26,6 +27,7 @@ export async function middleware(request: NextRequest) {
   }
 
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookieOptions: authCookieOptions,
     cookies: {
       getAll() {
         return request.cookies.getAll();

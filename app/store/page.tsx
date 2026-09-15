@@ -1,3 +1,4 @@
+import { dataErrorMessage } from "@/lib/security/validation";
 import Link from "next/link";
 import { StoreTasks } from "@/app/store/StoreTasks";
 import { PageHeader } from "@/components/PageHeader";
@@ -74,7 +75,7 @@ export default async function StoreDashboardPage() {
       <div className="page-content">
         <StoreTasks assignments={taskAssignments} storeId={storeId} />
         {taskAssignmentsResult.error ? (
-          <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{taskAssignmentsResult.error.message}</p>
+          <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{dataErrorMessage(taskAssignmentsResult.error)}</p>
         ) : null}
         {reminders.length > 0 ? (
           <section className="grid gap-3 sm:grid-cols-3">

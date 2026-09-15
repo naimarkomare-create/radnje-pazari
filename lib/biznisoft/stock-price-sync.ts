@@ -96,7 +96,6 @@ async function syncStoreStockPrices({
   snapshotRunId: string;
   storageId: number;
 }) {
-  const supabase = createServiceClient();
   const now = new Date().toISOString();
   const today = todayInBelgrade();
   const stockJson = await getItems({

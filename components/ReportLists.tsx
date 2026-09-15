@@ -1,5 +1,5 @@
 import { formatTemperatureSlot } from "@/lib/temperature-slots";
-import type { DailyRevenueReport, ProduceRequest, TemperatureReport } from "@/lib/types";
+import type { DailyRevenueReport, TemperatureReport } from "@/lib/types";
 
 export function DailyReportsList({
   reports,
@@ -49,34 +49,6 @@ export function TemperatureReportsList({
             </p>
           </div>
           <span className="shrink-0 text-sm font-semibold text-slate-700">{Number(report.temperature).toFixed(1)} °C</span>
-        </li>
-      ))}
-    </ReportList>
-  );
-}
-
-export function ProduceRequestsList({
-  requests,
-  error,
-  showStore = false
-}: {
-  requests: ProduceRequest[];
-  error?: string;
-  showStore?: boolean;
-}) {
-  return (
-    <ReportList title="Trebovanja" error={error} empty="Nema poslatih trebovanja.">
-      {requests.map((request) => (
-        <li className="report-row" key={request.id}>
-          <div className="min-w-0">
-            <p className="font-semibold text-ink">{request.item_name}</p>
-            <p className="mt-1 text-sm text-slate-500">
-              {showStore ? `${request.stores?.name ?? "Radnja"} · ${request.request_date}` : request.request_date}
-            </p>
-          </div>
-          <span className="shrink-0 text-sm font-semibold text-slate-700">
-            {[request.quantity, request.unit].filter(Boolean).join(" ") || "-"}
-          </span>
         </li>
       ))}
     </ReportList>

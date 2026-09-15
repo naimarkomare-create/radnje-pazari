@@ -6,6 +6,7 @@ const {
   findMethodName,
   getAvailableMethods,
   loadLocalEnv,
+  safeUrl,
   webServiceWsdlUrl,
   writeJson
 } = require("./biznisoft-common");
@@ -26,11 +27,11 @@ async function main() {
   loadLocalEnv();
 
   const wsdlUrl = webServiceWsdlUrl();
-  console.log(`Connecting to ${wsdlUrl}`);
+  console.log(`Connecting to ${safeUrl(wsdlUrl)}`);
   const client = await createSoapClient(wsdlUrl);
   const methods = getAvailableMethods(client);
   const output = {
-    wsdlUrl,
+    wsdlUrl: safeUrl(wsdlUrl),
     methods,
     getBuild: null,
     getSessionHandle: null
@@ -66,11 +67,15 @@ async function main() {
     };
   } else {
     console.log(`\nCalling ${getSessionHandleMethod} with credentials from environment...`);
-    output.getSessionHandle = await callReadOnlyMethod(
+    const sessionResult = await callReadOnlyMethod(
       client,
       getSessionHandleMethod,
       sessionPayloadCandidates(username, password)
     );
+    // Session results include credentials and a live handle; save only the outcome.
+    output.getSessionHandle = sessionResult.ok
+      ? { ok: true }
+      : { ok: false, attempts: sessionResult.errors.length, message: "GetSessionHandle failed." };
     console.log(output.getSessionHandle.ok ? `${getSessionHandleMethod}: ok` : `${getSessionHandleMethod}: failed`);
   }
 
@@ -78,7 +83,7 @@ async function main() {
   console.log(`\nSaved result to ${outputPath}`);
 }
 
-main().catch((error) => {
-  console.error(error);
+main().catch(() => {
+  console.error("BizniSoft session test failed. Check the service URL and connection.");
   process.exit(1);
 });

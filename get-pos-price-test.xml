@@ -6,7 +6,7 @@
   <soapenv:Header/>
   <soapenv:Body>
     <urn:GetItem>
-      <SessionHandle xsi:type="xsd:string">{4D552654-C843-4A52-8D7D-738D1D6DC93E}</SessionHandle>
+      <SessionHandle xsi:type="xsd:string">{EXAMPLE_SESSION_ID}</SessionHandle>
       <sItemType xsi:type="xsd:string">qtArticlePriceForPOS</sItemType>
       <JSONGetItemRequest xsi:type="xsd:string">{"StorageID":1,"Date":"2026-06-15","ArticleID":27572}</JSONGetItemRequest>
     </urn:GetItem>

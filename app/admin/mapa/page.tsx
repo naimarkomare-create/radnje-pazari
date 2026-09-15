@@ -1,3 +1,4 @@
+import { dataErrorMessage } from "@/lib/security/validation";
 import { PageHeader } from "@/components/PageHeader";
 import { requireAdmin } from "@/lib/auth";
 import { todayInBelgrade } from "@/lib/date";
@@ -39,12 +40,12 @@ export default async function AdminMapPage() {
     openTasks: (openTasksResult.data ?? []) as Array<{ store_id: string; open_count: number }>
   });
   const error =
-    storesResult.error?.message ??
-    yesterdayRevenueResult.error?.message ??
-    todayRevenueResult.error?.message ??
-    todayTemperatureResult.error?.message ??
-    todayShelfPhotoResult.error?.message ??
-    openTasksResult.error?.message;
+    dataErrorMessage(storesResult.error) ??
+    dataErrorMessage(yesterdayRevenueResult.error) ??
+    dataErrorMessage(todayRevenueResult.error) ??
+    dataErrorMessage(todayTemperatureResult.error) ??
+    dataErrorMessage(todayShelfPhotoResult.error) ??
+    dataErrorMessage(openTasksResult.error);
 
   return (
     <>

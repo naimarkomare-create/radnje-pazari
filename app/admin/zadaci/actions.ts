@@ -1,9 +1,11 @@
 "use server";
 
+import { actionError, publicErrorMessage } from "@/lib/security/validation";
+
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { PRODUCE_STORE_NAMES } from "@/lib/produce";
-import { objectPathFromStoragePath, SHELF_PHOTOS_BUCKET } from "@/lib/shelf-photos";
+import { taskPhotoObjectPath, SHELF_PHOTOS_BUCKET } from "@/lib/shelf-photos";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import type { ActionState, TaskPriority } from "@/lib/types";
@@ -36,7 +38,7 @@ export async function createStoreTask(_previousState: ActionState, formData: For
       : await storesQuery.in("id", selectedStoreIds.length > 0 ? selectedStoreIds : ["00000000-0000-0000-0000-000000000000"]);
     const stores = storesResult.data ?? [];
 
-    if (storesResult.error) return { ok: false, message: storesResult.error.message };
+    if (storesResult.error) return { ok: false, message: publicErrorMessage(storesResult.error) };
     if (stores.length === 0) return { ok: false, message: "Izaberite najmanje jednu radnju." };
 
     const { data: task, error: taskError } = await supabase
@@ -53,7 +55,7 @@ export async function createStoreTask(_previousState: ActionState, formData: For
       .select("id")
       .single();
 
-    if (taskError || !task) return { ok: false, message: taskError?.message ?? "Zadatak nije kreiran." };
+    if (taskError || !task) return { ok: false, message: "Zadatak nije kreiran." };
 
     const { error: assignmentsError } = await supabase.from("store_task_assignments").insert(
       stores.map((store) => ({
@@ -62,13 +64,13 @@ export async function createStoreTask(_previousState: ActionState, formData: For
       }))
     );
 
-    if (assignmentsError) return { ok: false, message: assignmentsError.message };
+    if (assignmentsError) return { ok: false, message: publicErrorMessage(assignmentsError) };
 
     revalidatePath("/admin/zadaci");
     revalidatePath("/store");
     return { ok: true, message: "Zadatak je poslat." };
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Greška pri slanju zadatka." };
+    return { ok: false, message: actionError(error, "Greška pri slanju zadatka.") };
   }
 }
 
@@ -78,18 +80,19 @@ export async function deleteTaskPhoto(assignmentId: string): Promise<ActionState
     const supabase = createClient();
     const { data: assignment, error } = await supabase
       .from("store_task_assignments")
-      .select("id, task_id, photo_path")
+      .select("id, task_id, store_id, photo_path")
       .eq("id", assignmentId)
       .single();
 
-    if (error || !assignment) return { ok: false, message: error?.message ?? "Fotografija nije pronađena." };
+    if (error || !assignment) return { ok: false, message: "Fotografija nije pronađena." };
 
-    const objectPath = objectPathFromStoragePath(assignment.photo_path);
+    const objectPath = taskPhotoObjectPath(assignment.photo_path, assignment.store_id, assignment.id);
+    if (assignment.photo_path && !objectPath) return { ok: false, message: "Putanja slike nije ispravna." };
 
     if (objectPath) {
       const service = createServiceClient();
       const { error: storageError } = await service.storage.from(SHELF_PHOTOS_BUCKET).remove([objectPath]);
-      if (storageError) return { ok: false, message: storageError.message };
+      if (storageError) return { ok: false, message: publicErrorMessage(storageError) };
     }
 
     const { error: updateError } = await supabase
@@ -97,12 +100,12 @@ export async function deleteTaskPhoto(assignmentId: string): Promise<ActionState
       .update({ photo_path: null, photo_url: null })
       .eq("id", assignmentId);
 
-    if (updateError) return { ok: false, message: updateError.message };
+    if (updateError) return { ok: false, message: publicErrorMessage(updateError) };
 
     revalidatePath("/admin/zadaci");
     revalidatePath(`/admin/zadaci/${assignment.task_id}`);
     return { ok: true, message: "Slika je obrisana." };
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Greška pri brisanju slike." };
+    return { ok: false, message: actionError(error, "Greška pri brisanju slike.") };
   }
 }

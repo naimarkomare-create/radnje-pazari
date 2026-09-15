@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentProfileWithClient } from "@/lib/auth";
-import { objectPathFromStoragePath, SHELF_PHOTOS_BUCKET } from "@/lib/shelf-photos";
+import { authorizeApi } from "@/lib/security/api";
+import { taskPhotoObjectPath, SHELF_PHOTOS_BUCKET } from "@/lib/shelf-photos";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 
@@ -10,6 +10,8 @@ export const dynamic = "force-dynamic";
 type TaskWithAssignments = {
   id: string;
   store_task_assignments?: Array<{
+    id: string;
+    store_id: string;
     photo_path: string | null;
   }>;
 };
@@ -23,13 +25,12 @@ export async function DELETE(
   }
 
   const supabase = createClient();
-  const profile = await getCurrentProfileWithClient(supabase);
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (profile.role !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const authorization = await authorizeApi(supabase, true);
+  if (!authorization.ok) return authorization.response;
 
   const taskResult = await supabase
     .from("store_tasks")
-    .select("id, store_task_assignments(photo_path)")
+    .select("id, store_task_assignments(id, store_id, photo_path)")
     .eq("id", params.id)
     .maybeSingle();
 
@@ -49,8 +50,8 @@ export async function DELETE(
   const objectPaths = Array.from(
     new Set(
       (task.store_task_assignments ?? [])
-        .map((assignment) => objectPathFromStoragePath(assignment.photo_path))
-        .filter((path): path is string => Boolean(path?.startsWith("tasks/")))
+        .map((assignment) => taskPhotoObjectPath(assignment.photo_path, assignment.store_id, assignment.id))
+        .filter((path): path is string => Boolean(path))
     )
   );
   const deleteResult = await supabase

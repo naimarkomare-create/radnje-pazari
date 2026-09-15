@@ -64,19 +64,6 @@ export type TemperatureDevice = {
   stores?: Pick<Store, "id" | "name"> | null;
 };
 
-export type ProduceRequest = {
-  id: string;
-  store_id: string;
-  user_id: string;
-  request_date: string;
-  item_name: string;
-  quantity: number | null;
-  unit: string | null;
-  note: string | null;
-  created_at: string;
-  stores?: Pick<Store, "name"> | null;
-};
-
 export type ProduceItem = {
   id: string;
   name: string;

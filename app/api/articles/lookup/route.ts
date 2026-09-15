@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentProfileWithClient } from "@/lib/auth";
+import { authorizeApi } from "@/lib/security/api";
 import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
 import type { ArticleLookupItem, ArticleSupplierOption } from "@/lib/types";
@@ -16,11 +16,9 @@ type LookupResponse = {
 
 export async function GET(request: NextRequest) {
   const authClient = createClient();
-  const profile = await getCurrentProfileWithClient(authClient);
+  const authorization = await authorizeApi(authClient, false);
+  if (!authorization.ok) return authorization.response;
 
-  if (!profile) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
 
   const searchParams = request.nextUrl.searchParams;
   const barcode = searchParams.get("barcode")?.trim();

@@ -1,9 +1,11 @@
+import { dataErrorMessage } from "@/lib/security/validation";
 import { RevenueExportButtons } from "@/app/admin/pazari/RevenueExportButtons";
 import { RevenueRangeFilters } from "@/app/admin/pazari/RevenueRangeFilters";
 import { DailyRevenueTable } from "@/components/AdminTables";
 import { PageHeader } from "@/components/PageHeader";
 import { Pagination } from "@/components/Pagination";
 import { requireAdmin } from "@/lib/auth";
+import { positiveInteger } from "@/lib/pagination";
 import { todayInBelgrade } from "@/lib/date";
 import { createClient } from "@/lib/supabase/server";
 import type { DailyRevenueReport, Store } from "@/lib/types";
@@ -64,15 +66,10 @@ export default async function AdminDailyRevenuePage({
           totalCount={reports.count ?? reports.data?.length ?? 0}
         />
         <DailyRevenueTable
-          error={reports.error?.message ?? storesResult.error?.message}
+          error={dataErrorMessage(reports.error) ?? dataErrorMessage(storesResult.error)}
           reports={(reports.data ?? []) as unknown as DailyRevenueReport[]}
         />
       </div>
     </>
   );
-}
-
-function positiveInteger(value: string | undefined, fallback: number) {
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }

@@ -5,6 +5,8 @@ import { SupplierCoverageReport } from "@/components/povrati/SupplierCoverageRep
 import { SupplierSyncPanel } from "@/components/povrati/SupplierSyncPanel";
 import { Pagination } from "@/components/Pagination";
 import { requireAdmin } from "@/lib/auth";
+import { formatBelgradeDateTime as formatDateTime } from "@/lib/date";
+import { positiveInteger } from "@/lib/pagination";
 import {
   distinctSupplierNames,
   formatReturnDate,
@@ -347,13 +349,6 @@ async function findMatchingProposalIds(supabase: ReturnType<typeof createClient>
   return Array.from(new Set((data ?? []).map((row) => row.proposal_id as string)));
 }
 
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("sr-RS", {
-    dateStyle: "short",
-    timeStyle: "short",
-    timeZone: "Europe/Belgrade"
-  }).format(new Date(value));
-}
 
 function dateDaysAgo(days: number) {
   const date = new Date();
@@ -366,10 +361,6 @@ function dateDaysAgo(days: number) {
   }).format(date);
 }
 
-function positiveInteger(value: string | undefined, fallback: number) {
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
-}
 
 function buildAdminReturnListHref(searchParams: SearchParams) {
   const params = buildAdminReturnListParams(searchParams);

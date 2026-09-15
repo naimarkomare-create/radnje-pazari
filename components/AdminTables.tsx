@@ -1,6 +1,6 @@
 import { formatMoney } from "@/components/ReportLists";
 import { formatTemperatureSlot } from "@/lib/temperature-slots";
-import type { DailyRevenueReport, ProduceRequest, TemperatureReport } from "@/lib/types";
+import type { DailyRevenueReport, TemperatureReport } from "@/lib/types";
 
 export function DailyRevenueTable({ reports, error }: { reports: DailyRevenueReport[]; error?: string }) {
   return (
@@ -65,35 +65,6 @@ export function TemperatureTable({ reports, error }: { reports: TemperatureRepor
             <Td>{report.device_name}</Td>
             <Td>{Number(report.temperature).toFixed(1)} °C</Td>
             <Td>{report.note ?? "-"}</Td>
-          </tr>
-        ))}
-      </tbody>
-    </AdminTable>
-  );
-}
-
-export function ProduceRequestsTable({ requests, error }: { requests: ProduceRequest[]; error?: string }) {
-  return (
-    <AdminTable error={error} title="Trebovanja">
-      <thead>
-        <tr>
-          <Th>Datum</Th>
-          <Th>Radnja</Th>
-          <Th>Naziv artikla</Th>
-          <Th>Količina</Th>
-          <Th>Jedinica mere</Th>
-          <Th>Napomena</Th>
-        </tr>
-      </thead>
-      <tbody>
-        {requests.map((request) => (
-          <tr key={request.id}>
-            <Td>{request.request_date}</Td>
-            <Td>{request.stores?.name ?? "-"}</Td>
-            <Td>{request.item_name}</Td>
-            <Td>{request.quantity ?? "-"}</Td>
-            <Td>{request.unit ?? "-"}</Td>
-            <Td>{request.note ?? "-"}</Td>
           </tr>
         ))}
       </tbody>

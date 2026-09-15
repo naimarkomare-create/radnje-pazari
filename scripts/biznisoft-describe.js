@@ -7,6 +7,7 @@ const {
   getAvailableMethods,
   helperWsdlUrl,
   loadLocalEnv,
+  safeUrl,
   safeFilePart,
   writeJson
 } = require("./biznisoft-common");
@@ -41,11 +42,11 @@ async function main() {
   }
 
   const wsdlUrl = helperWsdlUrl();
-  console.log(`Connecting to ${wsdlUrl}`);
+  console.log(`Connecting to ${safeUrl(wsdlUrl)}`);
   const client = await createSoapClient(wsdlUrl);
   const methods = getAvailableMethods(client);
   const output = {
-    wsdlUrl,
+    wsdlUrl: safeUrl(wsdlUrl),
     itemType,
     methods,
     results: {}
@@ -72,7 +73,7 @@ async function main() {
   console.log(`\nSaved result to ${outputPath}`);
 }
 
-main().catch((error) => {
-  console.error(error);
+main().catch(() => {
+  console.error("BizniSoft description request failed. Check the service URL and connection.");
   process.exit(1);
 });

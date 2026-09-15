@@ -1,5 +1,7 @@
 "use server";
 
+import { InputError, actionError, publicErrorMessage, isUuid } from "@/lib/security/validation";
+
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -13,7 +15,8 @@ function getText(formData: FormData, key: string) {
 
 function getRequiredText(formData: FormData, key: string, label: string) {
   const value = getText(formData, key);
-  if (!value) throw new Error(`${label} je obavezno polje.`);
+  if (!value) throw new InputError(`${label} je obavezno polje.`);
+  if ((key === "id" || key === "store_id") && !isUuid(value)) throw new InputError(`${label} nije ispravno polje.`);
   return value;
 }
 
@@ -21,7 +24,7 @@ function getOptionalNumber(formData: FormData, key: string, label: string) {
   const raw = getText(formData, key);
   if (!raw) return null;
   const value = Number(raw);
-  if (!Number.isFinite(value)) throw new Error(`${label} mora biti broj.`);
+  if (!Number.isFinite(value)) throw new InputError(`${label} mora biti broj.`);
   return value;
 }
 
@@ -29,13 +32,13 @@ function getIntegerOrZero(formData: FormData, key: string, label: string) {
   const raw = getText(formData, key);
   if (!raw) return 0;
   const value = Number(raw);
-  if (!Number.isInteger(value)) throw new Error(`${label} mora biti ceo broj.`);
+  if (!Number.isInteger(value)) throw new InputError(`${label} mora biti ceo broj.`);
   return value;
 }
 
 function getDevicePayload(formData: FormData) {
   const deviceType = getText(formData, "device_type");
-  if (!deviceTypes.has(deviceType)) throw new Error("Tip uređaja nije ispravan.");
+  if (!deviceTypes.has(deviceType)) throw new InputError("Tip uređaja nije ispravan.");
 
   return {
     store_id: getRequiredText(formData, "store_id", "Radnja"),
@@ -57,13 +60,13 @@ export async function addTemperatureDevice(
     const supabase = createClient();
     const { error } = await supabase.from("temperature_devices").insert(getDevicePayload(formData));
 
-    if (error) return { ok: false, message: error.message };
+    if (error) return { ok: false, message: publicErrorMessage(error) };
 
     revalidatePath("/admin/temperature/uredjaji");
     revalidatePath("/store/temperature");
     return { ok: true, message: "Uređaj je sačuvan." };
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Greška pri čuvanju uređaja." };
+    return { ok: false, message: actionError(error, "Greška pri čuvanju uređaja.") };
   }
 }
 
@@ -77,13 +80,13 @@ export async function updateTemperatureDevice(
     const supabase = createClient();
     const { error } = await supabase.from("temperature_devices").update(getDevicePayload(formData)).eq("id", id);
 
-    if (error) return { ok: false, message: error.message };
+    if (error) return { ok: false, message: publicErrorMessage(error) };
 
     revalidatePath("/admin/temperature/uredjaji");
     revalidatePath("/store/temperature");
     return { ok: true, message: "Uređaj je sačuvan." };
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Greška pri čuvanju uređaja." };
+    return { ok: false, message: actionError(error, "Greška pri čuvanju uređaja.") };
   }
 }
 
@@ -98,12 +101,12 @@ export async function setTemperatureDeviceActive(
     const supabase = createClient();
     const { error } = await supabase.from("temperature_devices").update({ active }).eq("id", id);
 
-    if (error) return { ok: false, message: error.message };
+    if (error) return { ok: false, message: publicErrorMessage(error) };
 
     revalidatePath("/admin/temperature/uredjaji");
     revalidatePath("/store/temperature");
     return { ok: true, message: "Uređaj je sačuvan." };
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Greška pri čuvanju uređaja." };
+    return { ok: false, message: actionError(error, "Greška pri čuvanju uređaja.") };
   }
 }

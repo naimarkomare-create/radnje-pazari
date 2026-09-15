@@ -2,6 +2,15 @@
 
 Next.js MVP za internu upotrebu u 10 maloprodajnih radnji. Aplikacija koristi Supabase Auth, Supabase PostgreSQL i Row Level Security. Podaci se ne čuvaju lokalno.
 
+## Bezbednosna provera pre objave
+
+Izveštaj, ograničenja i ručni testovi nalaze se u `SECURITY_AUDIT.md`.
+Pre objave ovih izmena proverite na staging projektu i primenite novu migraciju
+`supabase/migrations/20260915120000_security_hardening.sql`.
+Migracija nije automatski primenjena. Sinhronizacije bez nove funkcije za zaključavanje
+vraćaju 503. Automatske provere: `npm run test:security`.
+Postojeći dnevni cron nije promenjen; ručno čišćenje slika sada koristi POST i tajnu u zaglavlju.
+
 ## Tehnologije
 
 - Next.js
@@ -196,9 +205,9 @@ Iste promenljive dodajte u Vercel:
 - `CLEANUP_SECRET`
 - `CRON_SECRET`
 
-`SUPABASE_SERVICE_ROLE_KEY` se koristi samo na serveru za cleanup starih slika. Nikada ga ne dodavati sa `NEXT_PUBLIC_` prefiksom.
+`SUPABASE_SERVICE_ROLE_KEY` se koristi samo na serveru za postojeće privilegovane operacije, uključujući BizniSoft sinhronizaciju i cleanup. Nikada ga ne dodavati sa `NEXT_PUBLIC_` prefiksom.
 
-`CRON_SECRET` treba da ima istu vrednost kao `CLEANUP_SECRET` da bi Vercel Cron mogao da pozove cleanup rutu preko `Authorization` headera.
+`CRON_SECRET` štiti dnevnu cron rutu. `CLEANUP_SECRET` štiti ručni cleanup slika; vrednosti ne moraju biti iste.
 
 ## Cleanup starih slika
 
@@ -210,10 +219,10 @@ Aplikacija ima API rutu:
 
 Ruta briše slike starije od 30 dana iz `shelf-photos` bucket-a i zatim briše odgovarajuće redove iz `produce_shelf_photo_checks`.
 
-Ručni test sa query secret-om:
+Ručni test sa Authorization zaglavljem (bez tajne u URL-u):
 
 ```bash
-curl "https://your-vercel-domain.vercel.app/api/cleanup-shelf-photos?secret=YOUR_CLEANUP_SECRET"
+curl -X POST -H "Authorization: Bearer ${CLEANUP_SECRET}" "https://your-vercel-domain.vercel.app/api/cleanup-shelf-photos"
 ```
 
 Bezbedan test:
@@ -231,14 +240,14 @@ where check_date < current_date - interval '30 days';
 
 ## Vercel Cron
 
-`vercel.json` pokreće cleanup jednom dnevno:
+`vercel.json` pokreće postojeću sinhronizaciju cena i cleanup starih nacrta povrata jednom dnevno u 05:00 UTC:
 
 ```json
 {
   "crons": [
     {
-      "path": "/api/cleanup-shelf-photos",
-      "schedule": "0 3 * * *"
+      "path": "/api/cron/biznisoft-stock-price-sync",
+      "schedule": "0 5 * * *"
     }
   ]
 }
@@ -246,11 +255,22 @@ where check_date < current_date - interval '30 days';
 
 Vercel šalje `Authorization: Bearer <CRON_SECRET>` kada je `CRON_SECRET` podešen u environment promenljivama.
 
+Cleanup slika nije deo ovog rasporeda; njegova ruta ostaje dostupna za ručni poziv. Zadržite jedan dnevni cron u ovom projektu.
+
 ## Podsetnik za slikanje police
 
 Store korisnici imaju osnovu za notifikacije na strani `/store/kontrola-police`.
 
 Trenutno dugme `Uključi notifikacije` traži browser dozvolu na uređaju. Web Push slanje dnevnog podsetnika u 12:30 nije lažno implementirano; sledeći korak je dodavanje push subscription tabele, VAPID ključeva i cron rute koja šalje stvarne Web Push poruke.
+
+## Bezbednost konfiguracije i SOAP primera
+
+- `.env*` datoteke su ignorisane, osim `.env.example` i `.env.*.example`. Primeri smeju da sadrže samo placeholder vrednosti; stvarne tajne podesite lokalno ili u Vercel environment promenljivama.
+- Samo `NEXT_PUBLIC_SUPABASE_URL` i javni anon ključ smeju biti dostupni browseru. `SUPABASE_SERVICE_ROLE_KEY`, BizniSoft pristupni podaci i cron/cleanup tajne ostaju isključivo na serveru, bez `NEXT_PUBLIC_` prefiksa.
+- SOAP XML primeri koriste `EXAMPLE_USERNAME` i `{EXAMPLE_SESSION_ID}`. Prazno polje `Password` u primeru je namerno: BizniSoft podržava i praznu lozinku. Ne upisujte stvarne sesije u praćene primere. Lokalni discovery rezultati ostaju u ignorisanom direktorijumu `biznisoft-output`.
+- Ne beležite pune SOAP zahteve, login odgovore, Authorization zaglavlja ili auth cookies. Dijagnostika sme da sadrži samo bezbedne statuse i brojače. Cleanup tajnu šaljite zaglavljem, ne query parametrom koji može završiti u access logu.
+- Konfigurisani BizniSoft endpoint i sačuvani WSDL koriste HTTP. TLS proba na portu 58080 nije uspela, a port 443 je odbio vezu. HTTPS nije potvrđen i radni URL nije promenjen. HTTP ne šifruje SOAP pristupne podatke, sesije ni poslovne podatke u prenosu. Administrator BizniSoft servera treba da obezbedi validan HTTPS endpoint ili zaštićen privatni tunel pre promene URL-a.
+- Raniji Git commit-i sadrže primer korisničkog imena i sesija. Zamena u radnom stablu ih ne uklanja iz istorije. Poništite izložene sesije i proverite/rotirajte pristupne podatke ako su i dalje važeći. Istorija nije automatski menjana; njeno eventualno čišćenje zahteva poseban dogovor sa saradnicima.
 
 ## 8. Lokalno pokretanje
 

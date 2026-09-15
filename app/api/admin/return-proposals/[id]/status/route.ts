@@ -1,5 +1,6 @@
+import { readJsonObject, publicErrorMessage } from "@/lib/security/validation";
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentProfileWithClient } from "@/lib/auth";
+import { authorizeApi } from "@/lib/security/api";
 import { assertReturnStatus, RETURN_PROPOSAL_COLUMNS } from "@/lib/return-proposals";
 import { createClient } from "@/lib/supabase/server";
 
@@ -7,12 +8,12 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createClient();
-  const profile = await getCurrentProfileWithClient(supabase);
+  const authorization = await authorizeApi(supabase, true);
+  if (!authorization.ok) return authorization.response;
+  const { profile } = authorization;
 
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (profile.role !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const body = await request.json().catch(() => ({}));
+  const body = await readJsonObject(request);
   let status;
   try {
     status = assertReturnStatus(String(body.status ?? ""));
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     .select(`${RETURN_PROPOSAL_COLUMNS}, stores(id, name)`)
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: publicErrorMessage(error) }, { status: 500 });
 
   await supabase.from("return_proposal_history").insert({
     action: "status_updated",

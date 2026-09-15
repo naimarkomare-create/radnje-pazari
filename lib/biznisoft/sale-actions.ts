@@ -74,16 +74,6 @@ export async function fetchBizniSoftSaleActionsWithArticles() {
   return { debug, saleActions, uniqueArticleIdCount: articleIds.length };
 }
 
-export async function fetchBizniSoftArticlesForSaleActionIds(articleIds: number[]) {
-  return fetchBizniSoftArticlesForSaleActionRefs(
-    articleIds.map((articleId) => ({
-      articleId,
-      barcode: null,
-      code: null
-    }))
-  );
-}
-
 export async function fetchBizniSoftArticleBatchForSaleActions(
   articleIds: number[]
 ): Promise<BizniSoftArticleBatchResult> {
@@ -242,23 +232,6 @@ export async function fetchBizniSoftArticlesForSaleActionRefs(refs: BizniSoftArt
     unresolvedArticleRows,
     uniqueArticleIdCount: uniqueArticleIds.length
   };
-}
-
-export function saleActionSourceKey(
-  action: Pick<BizniSoftSaleAction, "action_type" | "storage_id" | "article_id" | "article_attribute_id" | "from_chapter" | "chapter_to" | "loyalty_level">,
-  taskType: "start" | "end"
-) {
-  return [
-    "biznisoft_sale_action",
-    taskType,
-    action.action_type,
-    action.storage_id ?? "ALL",
-    action.article_id ?? "null",
-    action.article_attribute_id ?? "null",
-    action.from_chapter ?? "null",
-    action.chapter_to ?? "null",
-    action.loyalty_level ?? "null"
-  ].join(":");
 }
 
 export function prepareSaleActionsForUpsert(saleActions: NormalizedBizniSoftSaleAction[]): PreparedBizniSoftSaleActions {
@@ -976,28 +949,6 @@ function flattenBizniSoftRows(value: unknown): Array<Record<string, unknown>> {
   return [];
 }
 
-function extractSaleActionRows(value: unknown): Array<Record<string, unknown>> {
-  if (Array.isArray(value)) {
-    return value.filter(isSaleActionLike);
-  }
-
-  if (!value || typeof value !== "object") {
-    return [];
-  }
-
-  const objectValue = value as Record<string, unknown>;
-
-  const directRows = extractRows(objectValue).filter(isSaleActionLike);
-  if (directRows.length > 0) return directRows;
-
-  for (const candidate of Object.values(objectValue)) {
-    const nested = extractSaleActionRows(candidate);
-    if (nested.length > 0) return nested;
-  }
-
-  return [];
-}
-
 function sourceKeyFromRaw(raw: Record<string, unknown>) {
   return [
     toNumberSourcePart(readField(raw, "ActionType"), "NO_ACTION_TYPE"),
@@ -1082,13 +1033,6 @@ function extractRows(value: unknown): Array<Record<string, unknown>> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
-function isSaleActionLike(value: unknown): value is Record<string, unknown> {
-  if (!value || typeof value !== "object") return false;
-
-  const keys = Object.keys(value as Record<string, unknown>).map((key) => key.toLowerCase());
-  return keys.includes("actiontype") || keys.includes("articleid") || keys.includes("storageid");
 }
 
 function readField(row: Record<string, unknown>, field: string) {

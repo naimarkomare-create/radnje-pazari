@@ -1,3 +1,4 @@
+import { dataErrorMessage } from "@/lib/security/validation";
 import { PageHeader } from "@/components/PageHeader";
 import { requireAdmin } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -12,7 +13,7 @@ export default async function AdminStoresPage() {
     <>
       <PageHeader description="Pregled radnji bez mogućnosti izmene." eyebrow="Admin pregled" title="Radnje" />
       <div className="page-content">
-        {result.error ? <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{result.error.message}</p> : null}
+        {result.error ? <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{dataErrorMessage(result.error)}</p> : null}
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {stores.map((store) => (
             <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm" key={store.id}>

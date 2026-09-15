@@ -1,3 +1,4 @@
+import { dataErrorMessage } from "@/lib/security/validation";
 import { PageHeader } from "@/components/PageHeader";
 import { requireAdmin } from "@/lib/auth";
 import { todayInBelgrade } from "@/lib/date";
@@ -26,7 +27,7 @@ export default async function AdminStatusPage() {
         <StatusList empty="Sve radnje su poslale pazar." stores={missing} title="Nije poslato danas" />
         {storesResult.error || reportsResult.error ? (
           <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 md:col-span-2">
-            {storesResult.error?.message ?? reportsResult.error?.message}
+            {dataErrorMessage(storesResult.error) ?? dataErrorMessage(reportsResult.error)}
           </p>
         ) : null}
       </div>

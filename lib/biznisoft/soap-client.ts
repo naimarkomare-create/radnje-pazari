@@ -1,3 +1,5 @@
+import "server-only";
+
 const SOAP_NAMESPACE = "urn:BSWebSericeIntf-IBSWebService";
 const SOAP_TIMEOUT_MS = 20_000;
 
@@ -190,15 +192,19 @@ async function callSoapMethod({
       throw new Error(`BizniSoft SOAP ${method} timed out after ${SOAP_TIMEOUT_MS / 1000} seconds.`);
     }
 
-    throw error;
+    // Fetch errors can include the request URL; do not propagate credential-bearing diagnostics.
+    throw new Error(`BizniSoft SOAP ${method} request failed.`);
   } finally {
     clearTimeout(timeout);
   }
 
-  const faultString = extractSoapFaultString(text);
+  const faultString = extractSoapFaultString(
+    text,
+    params.filter((param) => /username|password|sessionhandle|bsliveid/i.test(param.name)).map((param) => param.value)
+  );
 
   if (!response.ok) {
-    throw new Error(faultString ?? `BizniSoft SOAP ${method} failed with HTTP ${response.status}: ${text.slice(0, 500)}`);
+    throw new Error(faultString ?? `BizniSoft SOAP ${method} failed with HTTP ${response.status}`);
   }
 
   if (faultString) {
@@ -229,19 +235,35 @@ export function extractSoapReturn(xml: string) {
   const match = xml.match(/<(?:\w+:)?return\b[^>]*>([\s\S]*?)<\/(?:\w+:)?return>/i);
 
   if (!match) {
-    throw new Error(`SOAP response did not contain <return>: ${xml.slice(0, 500)}`);
+    throw new Error("SOAP response did not contain <return>.");
   }
 
   return decodeXml(match[1].replace(/^<!\[CDATA\[|\]\]>$/g, "").trim());
 }
 
-function extractSoapFaultString(xml: string) {
+function extractSoapFaultString(xml: string, secrets: string[] = []) {
   if (!/<(?:\w+:)?Fault\b/i.test(xml)) {
     return null;
   }
 
   const match = xml.match(/<(?:\w+:)?faultstring\b[^>]*>([\s\S]*?)<\/(?:\w+:)?faultstring>/i);
-  return match ? decodeXml(match[1].trim()) : "BizniSoft SOAP returned a fault.";
+  if (!match) return "BizniSoft SOAP returned a fault.";
+
+  let message = decodeXml(match[1].trim());
+  // The upstream fault may echo login parameters or a session handle.
+  const sensitiveValues = [...secrets, process.env.BIZNISOFT_USERNAME, process.env.BIZNISOFT_PASSWORD]
+    .filter((value): value is string => Boolean(value))
+    .sort((left, right) => right.length - left.length);
+  for (const value of sensitiveValues) {
+    message = message.split(value).join("[redacted]");
+  }
+
+  return message
+    .replace(/<(?:\w+:)?(?:Username|Password|SessionHandle|BSLiveID|BSLivePassword)\b[^>]*>[\s\S]*?<\/(?:\w+:)?(?:Username|Password|SessionHandle|BSLiveID|BSLivePassword)>/gi, "[redacted]")
+    .replace(/\{?[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}\}?/gi, "[redacted]")
+    .replace(/\beyJ[\w-]+\.[\w-]+\.[\w-]+/g, "[redacted]")
+    .replace(/\bBearer\s+[^\s<"']+/gi, "Bearer [redacted]")
+    .slice(0, 500);
 }
 
 function escapeXml(value: string) {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCurrentProfileWithClient } from "@/lib/auth";
+import { authorizeApi } from "@/lib/security/api";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -13,18 +13,8 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   const supabase = createClient();
-  const profile = await getCurrentProfileWithClient(supabase);
-
-  if (!profile) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  if (profile.role !== "admin") {
-    return NextResponse.json(
-      { error: "Nemate dozvolu za brisanje najave povrata." },
-      { status: 403 }
-    );
-  }
+  const authorization = await authorizeApi(supabase, true);
+  if (!authorization.ok) return authorization.response;
 
   if (!UUID_PATTERN.test(params.id)) {
     return NextResponse.json(

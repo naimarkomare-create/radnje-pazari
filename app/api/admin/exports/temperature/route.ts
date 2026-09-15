@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentProfileWithClient } from "@/lib/auth";
+import { authorizeApi } from "@/lib/security/api";
 import { PRODUCE_STORE_NAMES } from "@/lib/produce";
 import { createClient } from "@/lib/supabase/server";
 
@@ -8,10 +8,9 @@ const MAX_ROWS = 6000;
 
 export async function GET(request: NextRequest) {
   const supabase = createClient();
-  const profile = await getCurrentProfileWithClient(supabase);
+  const authorization = await authorizeApi(supabase, true);
+  if (!authorization.ok) return authorization.response;
 
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (profile.role !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const month = request.nextUrl.searchParams.get("month") ?? "";
   const storeId = request.nextUrl.searchParams.get("store_id") ?? "";

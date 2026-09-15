@@ -17,7 +17,7 @@ const navigation: DashboardNavItem[] = [
 ];
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const profile = await requireAdmin();
+  await requireAdmin();
 
   return (
     <DashboardShell navigation={navigation} subtitle="Administracija" title="Admin pregled">

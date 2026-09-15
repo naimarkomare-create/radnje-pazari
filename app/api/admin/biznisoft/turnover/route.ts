@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentProfile } from "@/lib/auth";
+import { authorizeApi } from "@/lib/security/api";
 import {
   getBizniSoftTurnover,
   TurnoverServiceError
@@ -11,15 +11,8 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
-  const profile = await getCurrentProfile();
-
-  if (!profile) {
-    return json({ success: false, error: "Unauthorized" }, 401);
-  }
-
-  if (profile.role !== "admin") {
-    return json({ success: false, error: "Forbidden" }, 403);
-  }
+  const authorization = await authorizeApi(undefined, true);
+  if (!authorization.ok) return authorization.response;
 
   const businessDate = request.nextUrl.searchParams.get("date") ?? todayInBelgrade();
 

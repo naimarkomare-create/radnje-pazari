@@ -11,7 +11,6 @@ export function AdminFilters({
   stores: Store[];
   selectedDate: string;
   selectedStore: string;
-  resetHref?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();

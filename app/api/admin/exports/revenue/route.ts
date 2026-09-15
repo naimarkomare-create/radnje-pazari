@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentProfileWithClient } from "@/lib/auth";
+import { authorizeApi } from "@/lib/security/api";
 import { createClient } from "@/lib/supabase/server";
 
 const PAGE_SIZE = 1000;
@@ -7,10 +7,9 @@ const MAX_ROWS = 12000;
 
 export async function GET(request: NextRequest) {
   const supabase = createClient();
-  const profile = await getCurrentProfileWithClient(supabase);
+  const authorization = await authorizeApi(supabase, true);
+  if (!authorization.ok) return authorization.response;
 
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (profile.role !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const dateFrom = request.nextUrl.searchParams.get("date_from") ?? "";
   const dateTo = request.nextUrl.searchParams.get("date_to") ?? dateFrom;

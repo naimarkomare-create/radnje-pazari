@@ -1,3 +1,5 @@
+import { withIntegrationLock } from "@/lib/security/sync-lock";
+import { publicErrorMessage } from "@/lib/security/validation";
 import { NextRequest, NextResponse } from "next/server";
 import { syncBiznisoftPriceChanges } from "@/lib/biznisoft/price-sync";
 
@@ -12,16 +14,19 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  try {
-    const result = await syncBiznisoftPriceChanges();
-    return NextResponse.json({
-      ...result,
-      autoCreateTasks: process.env.AUTO_CREATE_PRICE_TASKS === "true"
-    });
-  } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "BizniSoft price change cron failed." },
-      { status: 500 }
-    );
-  }
+  return withIntegrationLock(async () => {
+
+    try {
+      const result = await syncBiznisoftPriceChanges();
+      return NextResponse.json({
+        ...result,
+        autoCreateTasks: process.env.AUTO_CREATE_PRICE_TASKS === "true"
+      });
+    } catch (error) {
+      return NextResponse.json(
+        { error: publicErrorMessage(error) },
+        { status: 500 }
+      );
+    }
+  });
 }

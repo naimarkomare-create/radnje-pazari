@@ -1,8 +1,10 @@
+import { dataErrorMessage } from "@/lib/security/validation";
 import Link from "next/link";
 import { AdminTaskForm } from "@/app/admin/zadaci/AdminTaskForm";
 import { PageHeader } from "@/components/PageHeader";
 import { Pagination } from "@/components/Pagination";
 import { requireAdmin } from "@/lib/auth";
+import { positiveInteger } from "@/lib/pagination";
 import { todayInBelgrade } from "@/lib/date";
 import { PRODUCE_STORE_NAMES, sortProduceStores } from "@/lib/produce";
 import { computeTaskStatus, taskPriorityLabel } from "@/lib/tasks";
@@ -38,7 +40,7 @@ export default async function AdminTasksPage({
   const stores = sortProduceStores((storesResult.data ?? []) as unknown as Store[]);
   const tasks = (tasksResult.data ?? []) as unknown as StoreTask[];
   const totalCount = tasksResult.count ?? tasks.length;
-  const error = storesResult.error?.message ?? tasksResult.error?.message;
+  const error = dataErrorMessage(storesResult.error) ?? dataErrorMessage(tasksResult.error);
 
   return (
     <>
@@ -152,9 +154,4 @@ function priorityClass(priority: StoreTask["priority"]) {
 
 function formatDue(date: string, time: string | null) {
   return time ? `${date} ${time.slice(0, 5)}` : date;
-}
-
-function positiveInteger(value: string | undefined, fallback: number) {
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }

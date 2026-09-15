@@ -1,5 +1,6 @@
+import { readJsonObject } from "@/lib/security/validation";
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentProfileWithClient } from "@/lib/auth";
+import { authorizeApi } from "@/lib/security/api";
 import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
 
@@ -7,14 +8,11 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   const authClient = createClient();
-  const profile = await getCurrentProfileWithClient(authClient);
+  const authorization = await authorizeApi(authClient, true);
+  if (!authorization.ok) return authorization.response;
 
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (profile.role !== "admin") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
 
-  const body = await request.json().catch(() => null);
+  const body = await readJsonObject(request);
   const articleId = Number(body?.article_id);
   const supplierId = typeof body?.supplier_id === "string" ? body.supplier_id : "";
   const isPrimary = body?.is_primary === true;

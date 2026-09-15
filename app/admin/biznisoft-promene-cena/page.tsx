@@ -2,7 +2,8 @@ import Link from "next/link";
 import { BulkTaskButton, DetailTaskButtons, GroupTaskButton, PriceSyncButton } from "@/app/admin/biznisoft-promene-cena/PriceChangeButtons";
 import { Pagination } from "@/components/Pagination";
 import { requireAdmin } from "@/lib/auth";
-import { todayInBelgrade } from "@/lib/date";
+import { positiveInteger } from "@/lib/pagination";
+import { formatBelgradeDateTime as formatDateTime, todayInBelgrade } from "@/lib/date";
 import { PRODUCE_STORE_NAMES, sortProduceStores } from "@/lib/produce";
 import { createClient } from "@/lib/supabase/server";
 import type { BizniSoftArticle, BizniSoftPriceChange, BizniSoftPriceChangeWithArticle, Store } from "@/lib/types";
@@ -358,13 +359,6 @@ function formatRsd(value: number | null) {
   return value.toLocaleString("sr-RS", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
 }
 
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("sr-RS", {
-    dateStyle: "short",
-    timeStyle: "short",
-    timeZone: "Europe/Belgrade"
-  }).format(new Date(value));
-}
 
 function dateDaysAgo(days: number) {
   const date = new Date();
@@ -375,9 +369,4 @@ function dateDaysAgo(days: number) {
     timeZone: "Europe/Belgrade",
     year: "numeric"
   }).format(date);
-}
-
-function positiveInteger(value: string | undefined, fallback: number) {
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }

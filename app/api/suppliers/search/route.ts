@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentProfileWithClient } from "@/lib/auth";
+import { authorizeApi } from "@/lib/security/api";
 import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
 
@@ -7,11 +7,9 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   const authClient = createClient();
-  const profile = await getCurrentProfileWithClient(authClient);
+  const authorization = await authorizeApi(authClient, false);
+  if (!authorization.ok) return authorization.response;
 
-  if (!profile) {
-    return NextResponse.json({ error: "Unauthorized", suppliers: [] }, { status: 401 });
-  }
 
   const query = sanitizeSearch(request.nextUrl.searchParams.get("q") ?? "");
   if (query.length < 2) {

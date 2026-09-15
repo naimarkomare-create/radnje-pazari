@@ -38,6 +38,15 @@ function webServiceWsdlUrl() {
   return `${getBaseUrl()}/wsdl/IBSWebService`;
 }
 
+function safeUrl(value) {
+  const url = new URL(value);
+  url.username = "";
+  url.password = "";
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
 async function createSoapClient(wsdlUrl) {
   return soap.createClientAsync(wsdlUrl);
 }
@@ -82,19 +91,21 @@ async function callReadOnlyMethod(client, methodName, payloadCandidates = [{}]) 
   }
 
   const errors = [];
+  const isLogin = methodName.toLowerCase() === "getsessionhandle";
 
   for (const payload of payloadCandidates) {
     try {
       const response = payload === null ? await client[asyncMethodName]() : await client[asyncMethodName](payload);
       return {
         ok: true,
-        payload,
-        result: Array.isArray(response) ? response[0] : response
+        payload: isLogin ? "[redacted]" : payload,
+        result: isLogin ? "[redacted]" : Array.isArray(response) ? response[0] : response
       };
-    } catch (error) {
+    } catch {
       errors.push({
-        payload,
-        message: error instanceof Error ? error.message : String(error)
+        payload: isLogin ? "[redacted]" : payload,
+        // SOAP client errors may contain complete request bodies and authorization headers.
+        message: `${methodName} request failed.`
       });
     }
   }
@@ -144,6 +155,7 @@ module.exports = {
   helperWsdlUrl,
   loadLocalEnv,
   safeFilePart,
+  safeUrl,
   webServiceWsdlUrl,
   writeJson
 };

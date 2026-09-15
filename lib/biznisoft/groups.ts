@@ -14,18 +14,6 @@ export type SaleActionGroup = SaleActionGroupParts & {
   rows: BizniSoftSaleActionWithArticle[];
 };
 
-const SALE_ACTION_NAME_FIELDS = [
-  "ActionName",
-  "SaleActionName",
-  "Name",
-  "Description",
-  "Caption",
-  "Title",
-  "ActionTitle",
-  "Naziv",
-  "NazivAkcije"
-];
-
 export function saleActionGroupKeyFromParts(parts: SaleActionGroupParts) {
   return [
     parts.action_type,
@@ -93,17 +81,6 @@ export function groupSaleActions(rows: BizniSoftSaleActionWithArticle[]) {
   }
 
   return Array.from(groups.values()).sort((a, b) => (a.from_chapter ?? "").localeCompare(b.from_chapter ?? ""));
-}
-
-export function getSaleActionName(row: BizniSoftSaleActionWithArticle) {
-  if (row.sale_action_name) return row.sale_action_name;
-
-  for (const field of SALE_ACTION_NAME_FIELDS) {
-    const value = readRaw(row.raw, field);
-    if (value !== null && value !== undefined && value !== "") return String(value);
-  }
-
-  return null;
 }
 
 export function actionStatusFromDates({
@@ -182,23 +159,4 @@ export function formatDateTime(value: string | null) {
     dateStyle: "short",
     timeStyle: "short"
   }).format(new Date(value));
-}
-
-export function formatNumber(value: number | null) {
-  if (value === null) return "-";
-
-  return new Intl.NumberFormat("sr-RS", {
-    maximumFractionDigits: 2
-  }).format(value);
-}
-
-function readRaw(raw: Record<string, unknown> | null | undefined, field: string) {
-  if (!raw || typeof raw !== "object") return undefined;
-
-  const direct = raw[field];
-  if (direct !== undefined) return direct;
-
-  const lowerField = field.toLowerCase();
-  const entry = Object.entries(raw).find(([key]) => key.toLowerCase() === lowerField);
-  return entry?.[1];
 }

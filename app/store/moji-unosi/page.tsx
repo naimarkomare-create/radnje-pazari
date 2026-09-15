@@ -1,3 +1,4 @@
+import { dataErrorMessage } from "@/lib/security/validation";
 import { PageHeader } from "@/components/PageHeader";
 import { ProduceBatchList } from "@/components/ProduceBatchList";
 import { DailyReportsList, TemperatureReportsList } from "@/components/ReportLists";
@@ -32,11 +33,11 @@ export default async function StoreEntriesPage() {
     <>
       <PageHeader eyebrow={profile.stores?.name ?? "Radnja"} title="Moji unosi" />
       <div className="page-content grid items-start gap-5 xl:grid-cols-3">
-        <DailyReportsList reports={(daily.data ?? []) as DailyRevenueReport[]} error={daily.error?.message} />
-        <TemperatureReportsList reports={(temperatures.data ?? []) as TemperatureReport[]} error={temperatures.error?.message} />
+        <DailyReportsList reports={(daily.data ?? []) as DailyRevenueReport[]} error={dataErrorMessage(daily.error)} />
+        <TemperatureReportsList reports={(temperatures.data ?? []) as TemperatureReport[]} error={dataErrorMessage(temperatures.error)} />
         <ProduceBatchList
           batches={(produce.data ?? []) as unknown as ProduceRequestBatch[]}
-          error={produce.error?.message}
+          error={dataErrorMessage(produce.error)}
           title="Trebovanja"
         />
       </div>

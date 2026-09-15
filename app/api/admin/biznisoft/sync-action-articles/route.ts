@@ -1,5 +1,7 @@
+import { withIntegrationLock } from "@/lib/security/sync-lock";
+import { readJsonObject } from "@/lib/security/validation";
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentProfile } from "@/lib/auth";
+import { authorizeApi } from "@/lib/security/api";
 import {
   fetchBizniSoftArticleBatchForSaleActions,
   type NormalizedBizniSoftArticle
@@ -31,221 +33,223 @@ type StockArticleRow = {
 };
 
 export async function POST(request: NextRequest) {
-  const profile = await getCurrentProfile();
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (profile.role !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const authorization = await authorizeApi(undefined, true);
+  if (!authorization.ok) return authorization.response;
 
-  const body = (await request.json().catch(() => ({}))) as {
-    excludedArticleIds?: unknown;
-  };
-  const excludedArticleIds = normalizedExcludedIds(body.excludedArticleIds);
+  return withIntegrationLock(async () => {
 
-  try {
-    const supabase = createClient();
-    const actionsResult = await supabase
-      .from("biznisoft_sale_actions")
-      .select("article_id")
-      .not("article_id", "is", null)
-      .limit(10000);
+    const body = (await readJsonObject(request)) as {
+      excludedArticleIds?: unknown;
+    };
+    const excludedArticleIds = normalizedExcludedIds(body.excludedArticleIds);
 
-    if (actionsResult.error) throw new Error(actionsResult.error.message);
+    try {
+      const supabase = createClient();
+      const actionsResult = await supabase
+        .from("biznisoft_sale_actions")
+        .select("article_id")
+        .not("article_id", "is", null)
+        .limit(10000);
 
-    const articleIds = Array.from(
-      new Set(
-        (actionsResult.data ?? [])
-          .map((row) => row.article_id)
-          .filter(
-            (articleId): articleId is number =>
-              typeof articleId === "number" &&
-              Number.isInteger(articleId) &&
-              articleId > 0
-          )
-      )
-    ).sort((left, right) => left - right);
+      if (actionsResult.error) throw new Error(actionsResult.error.message);
 
-    if (articleIds.length === 0) {
-      return NextResponse.json({
-        complete: true,
-        createdCount: 0,
-        failedBatch: [],
-        partial: false,
-        processedArticles: 0,
-        remainingArticles: 0,
-        resolvedArticles: 0,
-        skippedCount: 0,
-        totalArticles: 0,
-        updatedCount: 0
-      });
-    }
+      const articleIds = Array.from(
+        new Set(
+          (actionsResult.data ?? [])
+            .map((row) => row.article_id)
+            .filter(
+              (articleId): articleId is number =>
+                typeof articleId === "number" &&
+                Number.isInteger(articleId) &&
+                articleId > 0
+            )
+        )
+      ).sort((left, right) => left - right);
 
-    const cacheResult = await supabase
-      .from("biznisoft_articles")
-      .select("article_id, article_code, name, barcode, cat_no, unit, raw")
-      .in("article_id", articleIds);
+      if (articleIds.length === 0) {
+        return NextResponse.json({
+          complete: true,
+          createdCount: 0,
+          failedBatch: [],
+          partial: false,
+          processedArticles: 0,
+          remainingArticles: 0,
+          resolvedArticles: 0,
+          skippedCount: 0,
+          totalArticles: 0,
+          updatedCount: 0
+        });
+      }
 
-    if (cacheResult.error) throw new Error(cacheResult.error.message);
+      const cacheResult = await supabase
+        .from("biznisoft_articles")
+        .select("article_id, article_code, name, barcode, cat_no, unit, raw")
+        .in("article_id", articleIds);
 
-    const cacheById = new Map<number, ArticleCacheRow>(
-      ((cacheResult.data ?? []) as ArticleCacheRow[]).map((row) => [
-        row.article_id,
-        row
-      ])
-    );
-    const initiallyResolved = articleIds.filter((articleId) =>
-      hasArticleName(cacheById.get(articleId))
-    ).length;
-    let createdCount = 0;
-    let updatedCount = 0;
-    let localCacheUpserted = 0;
-    const localCandidates = articleIds.filter((articleId) => {
-      const article = cacheById.get(articleId);
-      return !hasArticleName(article) || !article?.barcode;
-    });
+      if (cacheResult.error) throw new Error(cacheResult.error.message);
 
-    if (localCandidates.length > 0) {
-      const stockResult = await supabase
-        .from("biznisoft_stock_price_current")
-        .select("article_id, name, barcode, unit, raw")
-        .in("article_id", localCandidates)
-        .limit(1000);
-
-      if (stockResult.error) throw new Error(stockResult.error.message);
-
-      const stockById = bestStockRows(
-        (stockResult.data ?? []) as StockArticleRow[]
+      const cacheById = new Map<number, ArticleCacheRow>(
+        ((cacheResult.data ?? []) as ArticleCacheRow[]).map((row) => [
+          row.article_id,
+          row
+        ])
       );
-      const now = new Date().toISOString();
-      const localUpserts = localCandidates
-        .map((articleId) => {
-          const current = cacheById.get(articleId);
-          const stock = stockById.get(articleId);
-          if (!stock) return null;
+      const initiallyResolved = articleIds.filter((articleId) =>
+        hasArticleName(cacheById.get(articleId))
+      ).length;
+      let createdCount = 0;
+      let updatedCount = 0;
+      let localCacheUpserted = 0;
+      const localCandidates = articleIds.filter((articleId) => {
+        const article = cacheById.get(articleId);
+        return !hasArticleName(article) || !article?.barcode;
+      });
 
-          const merged = articleFromStock({ articleId, current, stock });
-          if (!hasArticleName(merged) && !merged.barcode) return null;
-          if (current && !articleCacheChanged(current, merged)) return null;
-          return { ...merged, synced_at: now };
-        })
-        .filter(
-          (
-            article
-          ): article is ArticleCacheRow & {
-            synced_at: string;
-          } => article !== null
+      if (localCandidates.length > 0) {
+        const stockResult = await supabase
+          .from("biznisoft_stock_price_current")
+          .select("article_id, name, barcode, unit, raw")
+          .in("article_id", localCandidates)
+          .limit(1000);
+
+        if (stockResult.error) throw new Error(stockResult.error.message);
+
+        const stockById = bestStockRows(
+          (stockResult.data ?? []) as StockArticleRow[]
         );
+        const now = new Date().toISOString();
+        const localUpserts = localCandidates
+          .map((articleId) => {
+            const current = cacheById.get(articleId);
+            const stock = stockById.get(articleId);
+            if (!stock) return null;
 
-      if (localUpserts.length > 0) {
-        const localUpsertResult = await supabase
-          .from("biznisoft_articles")
-          .upsert(localUpserts, { onConflict: "article_id" });
-
-        if (localUpsertResult.error) {
-          throw new Error(localUpsertResult.error.message);
-        }
-
-        for (const article of localUpserts) {
-          if (cacheById.has(article.article_id)) updatedCount += 1;
-          else createdCount += 1;
-          cacheById.set(article.article_id, article);
-        }
-        localCacheUpserted = localUpserts.length;
-      }
-    }
-
-    const unresolvedBeforeSoap = articleIds.filter(
-      (articleId) => !hasArticleName(cacheById.get(articleId))
-    );
-    const soapBatch = unresolvedBeforeSoap
-      .filter((articleId) => !excludedArticleIds.has(articleId))
-      .slice(0, REMOTE_BATCH_SIZE);
-    let failedBatch: Array<{
-      articleId: number;
-      code: string;
-      message: string;
-    }> = [];
-
-    if (soapBatch.length > 0) {
-      const remoteResult =
-        await fetchBizniSoftArticleBatchForSaleActions(soapBatch);
-      const now = new Date().toISOString();
-      const remoteUpserts = remoteResult.articles.map((article) => ({
-        ...mergeRemoteArticle(cacheById.get(article.article_id), article),
-        synced_at: now
-      }));
-
-      if (remoteUpserts.length > 0) {
-        const remoteUpsertResult = await supabase
-          .from("biznisoft_articles")
-          .upsert(remoteUpserts, { onConflict: "article_id" });
-
-        if (remoteUpsertResult.error) {
-          return NextResponse.json(
-            {
-              error:
-                "Artikli su preuzeti, ali čuvanje u bazi nije završeno.",
-              retryable: true
-            },
-            { status: 500 }
+            const merged = articleFromStock({ articleId, current, stock });
+            if (!hasArticleName(merged) && !merged.barcode) return null;
+            if (current && !articleCacheChanged(current, merged)) return null;
+            return { ...merged, synced_at: now };
+          })
+          .filter(
+            (
+              article
+            ): article is ArticleCacheRow & {
+              synced_at: string;
+            } => article !== null
           );
-        }
 
-        for (const article of remoteUpserts) {
-          if (cacheById.has(article.article_id)) updatedCount += 1;
-          else createdCount += 1;
-          cacheById.set(article.article_id, article);
+        if (localUpserts.length > 0) {
+          const localUpsertResult = await supabase
+            .from("biznisoft_articles")
+            .upsert(localUpserts, { onConflict: "article_id" });
+
+          if (localUpsertResult.error) {
+            throw new Error(localUpsertResult.error.message);
+          }
+
+          for (const article of localUpserts) {
+            if (cacheById.has(article.article_id)) updatedCount += 1;
+            else createdCount += 1;
+            cacheById.set(article.article_id, article);
+          }
+          localCacheUpserted = localUpserts.length;
         }
       }
 
-      failedBatch = [
-        ...remoteResult.failures,
-        ...remoteResult.articles
-          .filter((article) => !article.name?.trim())
-          .map((article) => ({
-            articleId: article.article_id,
-            code: "invalid_response",
-            message: "BizniSoft odgovor nema naziv artikla."
-          }))
-      ];
+      const unresolvedBeforeSoap = articleIds.filter(
+        (articleId) => !hasArticleName(cacheById.get(articleId))
+      );
+      const soapBatch = unresolvedBeforeSoap
+        .filter((articleId) => !excludedArticleIds.has(articleId))
+        .slice(0, REMOTE_BATCH_SIZE);
+      let failedBatch: Array<{
+        articleId: number;
+        code: string;
+        message: string;
+      }> = [];
+
+      if (soapBatch.length > 0) {
+        const remoteResult =
+          await fetchBizniSoftArticleBatchForSaleActions(soapBatch);
+        const now = new Date().toISOString();
+        const remoteUpserts = remoteResult.articles.map((article) => ({
+          ...mergeRemoteArticle(cacheById.get(article.article_id), article),
+          synced_at: now
+        }));
+
+        if (remoteUpserts.length > 0) {
+          const remoteUpsertResult = await supabase
+            .from("biznisoft_articles")
+            .upsert(remoteUpserts, { onConflict: "article_id" });
+
+          if (remoteUpsertResult.error) {
+            return NextResponse.json(
+              {
+                error:
+                  "Artikli su preuzeti, ali čuvanje u bazi nije završeno.",
+                retryable: true
+              },
+              { status: 500 }
+            );
+          }
+
+          for (const article of remoteUpserts) {
+            if (cacheById.has(article.article_id)) updatedCount += 1;
+            else createdCount += 1;
+            cacheById.set(article.article_id, article);
+          }
+        }
+
+        failedBatch = [
+          ...remoteResult.failures,
+          ...remoteResult.articles
+            .filter((article) => !article.name?.trim())
+            .map((article) => ({
+              articleId: article.article_id,
+              code: "invalid_response",
+              message: "BizniSoft odgovor nema naziv artikla."
+            }))
+        ];
+      }
+
+      const failedIds = new Set([
+        ...excludedArticleIds,
+        ...failedBatch.map((failure) => failure.articleId)
+      ]);
+      const unresolvedArticleIds = articleIds.filter(
+        (articleId) => !hasArticleName(cacheById.get(articleId))
+      );
+      const retryableRemaining = unresolvedArticleIds.filter(
+        (articleId) => !failedIds.has(articleId)
+      );
+      const complete = retryableRemaining.length === 0;
+      const resolvedArticles = articleIds.length - unresolvedArticleIds.length;
+      const processedArticles =
+        articleIds.length - retryableRemaining.length;
+
+      return NextResponse.json({
+        complete,
+        createdCount,
+        failedBatch,
+        localCacheUpserted,
+        partial: complete && unresolvedArticleIds.length > 0,
+        processedArticles,
+        remainingArticles: retryableRemaining.length,
+        resolvedArticles,
+        skippedCount: initiallyResolved,
+        soapBatchAttempted: soapBatch.length,
+        totalArticles: articleIds.length,
+        unresolvedArticleIds: unresolvedArticleIds.slice(0, 100),
+        updatedCount
+      });
+    } catch (error) {
+      const message = safeSyncError(error);
+      console.error("BizniSoft action article batch sync failed", { message });
+      return NextResponse.json(
+        { error: message, retryable: true },
+        { status: 502 }
+      );
     }
-
-    const failedIds = new Set([
-      ...excludedArticleIds,
-      ...failedBatch.map((failure) => failure.articleId)
-    ]);
-    const unresolvedArticleIds = articleIds.filter(
-      (articleId) => !hasArticleName(cacheById.get(articleId))
-    );
-    const retryableRemaining = unresolvedArticleIds.filter(
-      (articleId) => !failedIds.has(articleId)
-    );
-    const complete = retryableRemaining.length === 0;
-    const resolvedArticles = articleIds.length - unresolvedArticleIds.length;
-    const processedArticles =
-      articleIds.length - retryableRemaining.length;
-
-    return NextResponse.json({
-      complete,
-      createdCount,
-      failedBatch,
-      localCacheUpserted,
-      partial: complete && unresolvedArticleIds.length > 0,
-      processedArticles,
-      remainingArticles: retryableRemaining.length,
-      resolvedArticles,
-      skippedCount: initiallyResolved,
-      soapBatchAttempted: soapBatch.length,
-      totalArticles: articleIds.length,
-      unresolvedArticleIds: unresolvedArticleIds.slice(0, 100),
-      updatedCount
-    });
-  } catch (error) {
-    const message = safeSyncError(error);
-    console.error("BizniSoft action article batch sync failed", { message });
-    return NextResponse.json(
-      { error: message, retryable: true },
-      { status: 502 }
-    );
-  }
+  });
 }
 
 function normalizedExcludedIds(value: unknown) {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentProfileWithClient } from "@/lib/auth";
+import { authorizeApi } from "@/lib/security/api";
 import {
   buildRevenueSpecificationWorkbook,
   excelDownloadResponse,
@@ -14,9 +14,8 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   const supabase = createClient();
-  const profile = await getCurrentProfileWithClient(supabase);
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (profile.role !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const authorization = await authorizeApi(supabase, true);
+  if (!authorization.ok) return authorization.response;
 
   const storeId = request.nextUrl.searchParams.get("store_id") ?? "";
   const month = request.nextUrl.searchParams.get("month") ?? "";

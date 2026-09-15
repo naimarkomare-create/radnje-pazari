@@ -1,9 +1,11 @@
+import { dataErrorMessage } from "@/lib/security/validation";
 import { DeleteShelfPhotoButton } from "@/app/admin/kontrola-police/DeleteShelfPhotoButton";
-import { ShelfPhotoFilters } from "@/app/admin/kontrola-police/ShelfPhotoFilters";
+import { AdminFilters } from "@/components/AdminFilters";
 import { PageHeader } from "@/components/PageHeader";
 import { Pagination } from "@/components/Pagination";
 import { formatTime } from "@/components/ShelfPhotoGrid";
 import { requireAdmin } from "@/lib/auth";
+import { positiveInteger } from "@/lib/pagination";
 import { todayInBelgrade } from "@/lib/date";
 import { PRODUCE_STORE_NAMES, sortProduceStores } from "@/lib/produce";
 import { withSignedShelfPhotoUrls } from "@/lib/shelf-photos";
@@ -63,10 +65,10 @@ export default async function AdminShelfPhotoPage({
     <>
       <PageHeader eyebrow="Admin pregled" title="Kontrola voća i povrća" />
       <div className="page-content">
-        <ShelfPhotoFilters selectedDate={selectedDate} selectedStore={selectedStore} stores={stores} />
+        <AdminFilters selectedDate={selectedDate} selectedStore={selectedStore} stores={stores} />
         {storesResult.error || photosResult.error ? (
           <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-            {storesResult.error?.message ?? photosResult.error?.message}
+            {dataErrorMessage(storesResult.error) ?? dataErrorMessage(photosResult.error)}
           </p>
         ) : null}
         <section className="grid gap-5 lg:grid-cols-2">
@@ -161,9 +163,4 @@ function Th({ children }: { children: React.ReactNode }) {
 
 function Td({ children }: { children: React.ReactNode }) {
   return <td className="border-b border-slate-100 px-3 py-2 align-top text-slate-700">{children}</td>;
-}
-
-function positiveInteger(value: string | undefined, fallback: number) {
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }

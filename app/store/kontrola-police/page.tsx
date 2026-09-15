@@ -1,3 +1,4 @@
+import { dataErrorMessage } from "@/lib/security/validation";
 import { NotificationPermission } from "@/app/store/kontrola-police/NotificationPermission";
 import { ShelfPhotoForm } from "@/app/store/kontrola-police/ShelfPhotoForm";
 import { PageHeader } from "@/components/PageHeader";
@@ -24,7 +25,7 @@ export default async function StoreShelfPhotoPage() {
       <div className="page-content">
         <ShelfPhotoForm storeId={profile.store_id ?? ""} today={todayInBelgrade()} />
         <NotificationPermission />
-        {result.error ? <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{result.error.message}</p> : null}
+        {result.error ? <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{dataErrorMessage(result.error)}</p> : null}
         <ShelfPhotoGrid photos={photos} />
       </div>
     </>

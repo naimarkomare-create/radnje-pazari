@@ -1,3 +1,4 @@
+import { dataErrorMessage } from "@/lib/security/validation";
 import { TemperatureForm } from "@/app/store/StoreForms";
 import { PageHeader } from "@/components/PageHeader";
 import { TemperatureReportsList } from "@/components/ReportLists";
@@ -34,7 +35,7 @@ export default async function StoreTemperaturePage() {
         />
         <TemperatureReportsList
           reports={(result.data ?? []) as TemperatureReport[]}
-          error={result.error?.message ?? devicesResult.error?.message}
+          error={dataErrorMessage(result.error) ?? dataErrorMessage(devicesResult.error)}
         />
       </div>
     </>

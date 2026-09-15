@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCurrentProfileWithClient } from "@/lib/auth";
+import { authorizeApi } from "@/lib/security/api";
 import { deleteExpiredReturnDrafts } from "@/lib/returns/delete-expired-return-drafts";
 import { createClient } from "@/lib/supabase/server";
 
@@ -8,18 +8,8 @@ export const runtime = "nodejs";
 
 export async function POST() {
   const supabase = createClient();
-  const profile = await getCurrentProfileWithClient(supabase);
-
-  if (!profile) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  if (profile.role !== "admin") {
-    return NextResponse.json(
-      { error: "Nemate dozvolu za brisanje starih nacrta." },
-      { status: 403 }
-    );
-  }
+  const authorization = await authorizeApi(supabase, true);
+  if (!authorization.ok) return authorization.response;
 
   try {
     const result = await deleteExpiredReturnDrafts();

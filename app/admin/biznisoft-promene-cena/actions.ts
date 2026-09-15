@@ -1,5 +1,7 @@
 "use server";
 
+import { actionError, publicErrorMessage } from "@/lib/security/validation";
+
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { todayInBelgrade } from "@/lib/date";
@@ -19,7 +21,7 @@ export async function createPriceChangeTasksForAllPending(): Promise<ActionState
       .eq("status", "new")
       .eq("task_created", false);
 
-    if (error) return { ok: false, message: error.message };
+    if (error) return { ok: false, message: publicErrorMessage(error) };
 
     const groups = Array.from(new Set((data ?? []).map((row) => `${row.change_date}__${row.storage_key}`)));
     let created = 0;
@@ -37,7 +39,7 @@ export async function createPriceChangeTasksForAllPending(): Promise<ActionState
     revalidatePricePaths();
     return { ok: failed === 0, message: `Kreirano: ${created}. Preskočeno: ${skipped}. Neuspešno: ${failed}.`, created, skipped, failed };
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Greška pri kreiranju zadataka." };
+    return { ok: false, message: actionError(error, "Greška pri kreiranju zadataka.") };
   }
 }
 
@@ -51,7 +53,7 @@ export async function createPriceChangeTasksForGroup(
     revalidatePricePaths();
     return result;
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Greška pri kreiranju zadatka." };
+    return { ok: false, message: actionError(error, "Greška pri kreiranju zadatka.") };
   }
 }
 
@@ -66,12 +68,12 @@ export async function ignorePriceChangeGroup(storageKey: string, changeDate = to
       .eq("storage_key", storageKey)
       .eq("status", "new");
 
-    if (error) return { ok: false, message: error.message };
+    if (error) return { ok: false, message: publicErrorMessage(error) };
 
     revalidatePricePaths();
     return { ok: true, message: "Promene su označene kao ignorisane." };
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Greška pri ignorisanju promena." };
+    return { ok: false, message: actionError(error, "Greška pri ignorisanju promena.") };
   }
 }
 
@@ -93,7 +95,7 @@ async function createTasksForGroup({
     .eq("task_created", false)
     .order("article_id", { ascending: true });
 
-  if (changesError) return { ok: false, message: changesError.message };
+  if (changesError) return { ok: false, message: publicErrorMessage(changesError) };
 
   const changes = (changesData ?? []) as BizniSoftPriceChange[];
   if (changes.length === 0) return { ok: true, message: "Nema nepotvrđenih promena za ovu grupu.", created: 0, skipped: 0 };
@@ -122,7 +124,7 @@ async function createTasksForGroup({
     .eq("source_type", SOURCE_TYPE)
     .in("source_key", sourceKeys);
 
-  if (existingError) return { ok: false, message: existingError.message };
+  if (existingError) return { ok: false, message: publicErrorMessage(existingError) };
 
   const existingKeys = new Set((existingData ?? []).map((task) => task.source_key as string));
   let created = 0;
@@ -153,14 +155,14 @@ async function createTasksForGroup({
       .select("id")
       .single();
 
-    if (taskError || !task) return { ok: false, message: taskError?.message ?? "Zadatak nije kreiran.", created, skipped };
+    if (taskError || !task) return { ok: false, message: "Zadatak nije kreiran.", created, skipped };
 
     const { error: assignmentError } = await supabase.from("store_task_assignments").insert({
       store_id: store.id,
       task_id: task.id
     });
 
-    if (assignmentError) return { ok: false, message: assignmentError.message, created, skipped };
+    if (assignmentError) return { ok: false, message: publicErrorMessage(assignmentError), created, skipped };
 
     created += 1;
     existingKeys.add(sourceKey);
@@ -175,7 +177,7 @@ async function createTasksForGroup({
         changes.map((change) => change.id)
       );
 
-    if (updateError) return { ok: false, message: updateError.message, created, skipped };
+    if (updateError) return { ok: false, message: publicErrorMessage(updateError), created, skipped };
   }
 
   return { ok: true, message: `Kreirano zadataka: ${created}. Preskočeno duplikata: ${skipped}.`, created, skipped };

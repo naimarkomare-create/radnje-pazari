@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentProfileWithClient } from "@/lib/auth";
+import { authorizeApi } from "@/lib/security/api";
 import { isIsoMonth, monthBounds } from "@/lib/excel-templates";
 import { PRODUCE_STORE_NAMES } from "@/lib/produce";
 import { createClient } from "@/lib/supabase/server";
@@ -16,9 +16,8 @@ export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
   const supabase = createClient();
-  const profile = await getCurrentProfileWithClient(supabase);
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (profile.role !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const authorization = await authorizeApi(supabase, true);
+  if (!authorization.ok) return authorization.response;
 
   const month = request.nextUrl.searchParams.get("month") ?? "";
   if (!isIsoMonth(month)) {

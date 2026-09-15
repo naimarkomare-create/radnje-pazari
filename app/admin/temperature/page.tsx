@@ -1,3 +1,4 @@
+import { dataErrorMessage } from "@/lib/security/validation";
 import { AdminFilters } from "@/components/AdminFilters";
 import { TemperatureTable } from "@/components/AdminTables";
 import { PageHeader } from "@/components/PageHeader";
@@ -5,6 +6,7 @@ import { Pagination } from "@/components/Pagination";
 import Link from "next/link";
 import { TemperatureExportPanel } from "@/app/admin/temperature/TemperatureExportPanel";
 import { requireAdmin } from "@/lib/auth";
+import { positiveInteger } from "@/lib/pagination";
 import { todayInBelgrade } from "@/lib/date";
 import { PRODUCE_STORE_NAMES, sortProduceStores } from "@/lib/produce";
 import { createClient } from "@/lib/supabase/server";
@@ -61,7 +63,6 @@ export default async function AdminTemperaturePage({
         </div>
         <TemperatureExportPanel month={selectedMonth} />
         <AdminFilters
-          resetHref="/admin/temperature"
           selectedDate={selectedDate}
           selectedStore={selectedStore}
           stores={stores}
@@ -71,7 +72,7 @@ export default async function AdminTemperaturePage({
           <StatusPanel title="Nisu poslali temperaturu" stores={missingStores} empty="Sve radnje su poslale temperaturu." />
         </section>
         <TemperatureTable
-          error={reports.error?.message ?? storesResult.error?.message ?? statusReports.error?.message}
+          error={dataErrorMessage(reports.error) ?? dataErrorMessage(storesResult.error) ?? dataErrorMessage(statusReports.error)}
           reports={(reports.data ?? []) as unknown as TemperatureReport[]}
         />
         <Pagination
@@ -106,9 +107,4 @@ function StatusPanel({ title, stores, empty }: { title: string; stores: Store[];
       </ul>
     </section>
   );
-}
-
-function positiveInteger(value: string | undefined, fallback: number) {
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }

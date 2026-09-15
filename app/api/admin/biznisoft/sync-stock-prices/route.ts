@@ -1,28 +1,26 @@
+import { withIntegrationLock } from "@/lib/security/sync-lock";
+import { publicErrorMessage } from "@/lib/security/validation";
 import { NextResponse } from "next/server";
-import { getCurrentProfile } from "@/lib/auth";
+import { authorizeApi } from "@/lib/security/api";
 import { syncBiznisoftStockPrices } from "@/lib/biznisoft/stock-price-sync";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function POST() {
-  const profile = await getCurrentProfile();
+  const authorization = await authorizeApi(undefined, true);
+  if (!authorization.ok) return authorization.response;
 
-  if (!profile) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  return withIntegrationLock(async () => {
 
-  if (profile.role !== "admin") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  try {
-    const result = await syncBiznisoftStockPrices();
-    return NextResponse.json(result);
-  } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "BizniSoft stock price sync failed." },
-      { status: 500 }
-    );
-  }
+    try {
+      const result = await syncBiznisoftStockPrices();
+      return NextResponse.json(result);
+    } catch (error) {
+      return NextResponse.json(
+        { error: publicErrorMessage(error) },
+        { status: 500 }
+      );
+    }
+  });
 }

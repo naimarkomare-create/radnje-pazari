@@ -1,3 +1,4 @@
+import { dataErrorMessage } from "@/lib/security/validation";
 import Link from "next/link";
 import { DeleteTaskButton } from "@/app/admin/zadaci/[id]/DeleteTaskButton";
 import { DeleteTaskPhotoButton } from "@/app/admin/zadaci/[id]/DeleteTaskPhotoButton";
@@ -37,7 +38,7 @@ export default async function AdminTaskDetailPage({ params }: { params: { id: st
           {task ? <DeleteTaskButton taskId={task.id} /> : null}
         </div>
         {result.error || !task ? (
-          <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{result.error?.message ?? "Zadatak nije pronađen."}</p>
+          <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{dataErrorMessage(result.error) ?? "Zadatak nije pronađen."}</p>
         ) : (
           <>
             <TaskSummary task={task} />

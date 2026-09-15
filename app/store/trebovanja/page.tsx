@@ -1,3 +1,4 @@
+import { dataErrorMessage } from "@/lib/security/validation";
 import { ProduceOrderForm } from "@/app/store/trebovanja/ProduceOrderForm";
 import { PageHeader } from "@/components/PageHeader";
 import { ProduceBatchList } from "@/components/ProduceBatchList";
@@ -31,7 +32,7 @@ export default async function StoreProduceRequestsPage() {
         <ProduceOrderForm items={(itemsResult.data ?? []) as ProduceItem[]} today={todayInBelgrade()} />
         <ProduceBatchList
           batches={(batchesResult.data ?? []) as unknown as ProduceRequestBatch[]}
-          error={itemsResult.error?.message ?? batchesResult.error?.message}
+          error={dataErrorMessage(itemsResult.error) ?? dataErrorMessage(batchesResult.error)}
         />
       </div>
     </>

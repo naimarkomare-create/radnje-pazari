@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { getSupabaseEnv } from "@/lib/env";
+import { authCookieOptions } from "@/lib/supabase/cookie-options";
 
 type CookieToSet = {
   name: string;
@@ -13,6 +14,7 @@ export function createClient() {
   const { url, anonKey } = getSupabaseEnv();
 
   return createServerClient(url, anonKey, {
+    cookieOptions: authCookieOptions,
     cookies: {
       getAll() {
         return cookieStore.getAll();

@@ -6,7 +6,7 @@
   <soapenv:Header/>
   <soapenv:Body>
     <urn:GetItems>
-      <SessionHandle xsi:type="xsd:string">{4D552654-C843-4A52-8D7D-738D1D6DC93E}</SessionHandle>
+      <SessionHandle xsi:type="xsd:string">{EXAMPLE_SESSION_ID}</SessionHandle>
       <sItemType xsi:type="xsd:string">itArticlesOnStock</sItemType>
       <JSONGetItemsRequest xsi:type="xsd:string">{"StorageID":1,"xsicMobSortOnly":false,"xsicNotBookedInvoices":false,"xsicChangesFromDate":"2000-01-01 00:00:00"}</JSONGetItemsRequest>
       <limit xsi:type="xsd:int">20000</limit>

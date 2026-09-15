@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentProfileWithClient } from "@/lib/auth";
+import { authorizeApi } from "@/lib/security/api";
 import { buildProduceOrderWorkbook, excelDownloadResponse, isIsoDate, type ProduceExportBatch } from "@/lib/excel-templates";
 import { createClient } from "@/lib/supabase/server";
 
@@ -8,9 +8,8 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   const supabase = createClient();
-  const profile = await getCurrentProfileWithClient(supabase);
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (profile.role !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const authorization = await authorizeApi(supabase, true);
+  if (!authorization.ok) return authorization.response;
 
   const date = request.nextUrl.searchParams.get("date") ?? "";
   if (!isIsoDate(date)) return NextResponse.json({ error: "Datum nije ispravan." }, { status: 400 });

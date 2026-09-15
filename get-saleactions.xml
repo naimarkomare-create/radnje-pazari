@@ -6,7 +6,7 @@
   <soapenv:Header/>
   <soapenv:Body>
     <urn:GetItems>
-      <SessionHandle xsi:type="xsd:string">{D714B38C-EC27-451F-A770-2F26E3861021}</SessionHandle>
+      <SessionHandle xsi:type="xsd:string">{EXAMPLE_SESSION_ID}</SessionHandle>
       <sItemType xsi:type="xsd:string">itSaleActions</sItemType>
       <JSONGetItemsRequest xsi:type="xsd:string">{"ActionType":1}</JSONGetItemsRequest>
       <limit xsi:type="xsd:int">100</limit>

@@ -10,18 +10,17 @@ export function objectPathFromStoragePath(storagePath: string | null) {
     return null;
   }
 
-  return storagePath.slice(SHELF_PHOTOS_PREFIX.length);
+  const objectPath = storagePath.slice(SHELF_PHOTOS_PREFIX.length);
+  const uuid = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+  const file = "[A-Za-z0-9_-]+\\.(?:jpg|jpeg|png|webp)";
+  return new RegExp(`^(?:\\d{4}-\\d{2}-\\d{2}/${uuid}/${file}|tasks/${uuid}/${uuid}/${file})$`).test(objectPath)
+    ? objectPath
+    : null;
 }
 
-export async function createSignedShelfPhotoUrl(supabase: ReturnType<typeof import("@/lib/supabase/server").createClient>, storagePath: string | null) {
-  const objectPath = objectPathFromStoragePath(storagePath);
-
-  if (!objectPath) {
-    return "";
-  }
-
-  const { data } = await supabase.storage.from(SHELF_PHOTOS_BUCKET).createSignedUrl(objectPath, 60 * 60);
-  return data?.signedUrl ?? "";
+export function taskPhotoObjectPath(storagePath: string | null, storeId: string, assignmentId: string) {
+  const path = objectPathFromStoragePath(storagePath);
+  return path?.startsWith(`tasks/${storeId}/${assignmentId}/`) ? path : null;
 }
 
 export async function createSignedShelfPhotoUrls(

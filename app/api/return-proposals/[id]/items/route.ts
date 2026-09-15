@@ -1,5 +1,6 @@
+import { readJsonObject, publicErrorMessage, isUuid } from "@/lib/security/validation";
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentProfileWithClient } from "@/lib/auth";
+import { authorizeApi } from "@/lib/security/api";
 import {
   canEditReturnProposal,
   RETURN_PROPOSAL_ITEM_COLUMNS
@@ -15,9 +16,11 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   const supabase = createClient();
-  const profile = await getCurrentProfileWithClient(supabase);
+  const authorization = await authorizeApi(supabase, false);
+  if (!authorization.ok) return authorization.response;
+  const { profile } = authorization;
+  if (!isUuid(params.id)) return NextResponse.json({ error: "Najava nije pronađena." }, { status: 404 });
 
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { data: proposalData, error: proposalError } = await supabase
     .from("return_proposals")
@@ -27,7 +30,7 @@ export async function POST(
 
   if (proposalError || !proposalData) {
     return NextResponse.json(
-      { error: proposalError?.message ?? "Najava nije pronađena." },
+      { error: "Najava nije pronađena." },
       { status: 404 }
     );
   }
@@ -40,12 +43,15 @@ export async function POST(
     );
   }
 
-  const body = await request.json().catch(() => ({}));
+  const body = await readJsonObject(request);
   const articleId = Number(body.article_id);
   const quantity = Number(body.quantity);
   const articleName = String(body.article_name ?? "").trim();
+  if (body.supplier_id && !isUuid(body.supplier_id)) {
+    return NextResponse.json({ error: "Dobavljač nije ispravan." }, { status: 400 });
+  }
 
-  if (!Number.isInteger(articleId)) {
+  if (!Number.isSafeInteger(articleId) || articleId <= 0 || articleId > 2147483647) {
     return NextResponse.json({ error: "ArticleID nije ispravan." }, { status: 400 });
   }
   if (!articleName) {
@@ -97,7 +103,7 @@ export async function POST(
     .select(RETURN_PROPOSAL_ITEM_COLUMNS)
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: publicErrorMessage(error) }, { status: 500 });
 
   await Promise.all([
     supabase

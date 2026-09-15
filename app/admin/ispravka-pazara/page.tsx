@@ -1,8 +1,10 @@
+import { dataErrorMessage } from "@/lib/security/validation";
 import { RevenueCorrectionTable } from "@/app/admin/ispravka-pazara/RevenueCorrectionTable";
 import { AdminFilters } from "@/components/AdminFilters";
 import { PageHeader } from "@/components/PageHeader";
 import { Pagination } from "@/components/Pagination";
 import { requireAdmin } from "@/lib/auth";
+import { positiveInteger } from "@/lib/pagination";
 import { createClient } from "@/lib/supabase/server";
 import type { DailyRevenueReport, Store } from "@/lib/types";
 
@@ -38,13 +40,12 @@ export default async function AdminRevenueCorrectionPage({
       <PageHeader eyebrow="Admin pregled" title="Ispravka pazara" />
       <div className="page-content">
         <AdminFilters
-          resetHref="/admin/ispravka-pazara"
           selectedDate={selectedDate}
           selectedStore={selectedStore}
           stores={(storesResult.data ?? []) as Store[]}
         />
         <RevenueCorrectionTable
-          error={reports.error?.message ?? storesResult.error?.message}
+          error={dataErrorMessage(reports.error) ?? dataErrorMessage(storesResult.error)}
           reports={(reports.data ?? []) as unknown as DailyRevenueReport[]}
         />
         <Pagination
@@ -57,9 +58,4 @@ export default async function AdminRevenueCorrectionPage({
       </div>
     </>
   );
-}
-
-function positiveInteger(value: string | undefined, fallback: number) {
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
