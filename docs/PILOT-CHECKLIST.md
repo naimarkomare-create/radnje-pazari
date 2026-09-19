@@ -25,7 +25,7 @@
 - [ ] Samo `NEXT_PUBLIC_SUPABASE_URL` i `NEXT_PUBLIC_SUPABASE_ANON_KEY` imaju `NEXT_PUBLIC_` prefiks.
 - [ ] `CRON_SECRET` i `CLEANUP_SECRET` su različite duge nasumične vrednosti.
 - [ ] `AUTO_CREATE_PRICE_TASKS=false`.
-- [ ] `BIZNISOFT_PASSWORD` postoji i može imati praznu vrednost ako nalog tako radi.
+- [ ] `BIZNISOFT_PASSWORD` je izostavljen ili prazan za nalog bez lozinke; nije dodat placeholder, navodnik ili razmak.
 
 ## SECURITY TEST
 

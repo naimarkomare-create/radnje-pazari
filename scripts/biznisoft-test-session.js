@@ -50,14 +50,14 @@ async function main() {
   }
 
   const username = process.env.BIZNISOFT_USERNAME || "";
-  const password = process.env.BIZNISOFT_PASSWORD || "";
+  const password = process.env.BIZNISOFT_PASSWORD ?? "";
   const getSessionHandleMethod = findMethodName(client, "GetSessionHandle");
 
-  if (!username || !password) {
-    console.log("\nMissing BIZNISOFT_USERNAME or BIZNISOFT_PASSWORD");
+  if (!username) {
+    console.log("\nMissing BIZNISOFT_USERNAME");
     output.getSessionHandle = {
       ok: false,
-      message: "Missing BIZNISOFT_USERNAME or BIZNISOFT_PASSWORD"
+      message: "Missing BIZNISOFT_USERNAME"
     };
   } else if (!getSessionHandleMethod) {
     console.log("\nGetSessionHandle was not found.");

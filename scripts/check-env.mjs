@@ -8,7 +8,7 @@ const definitions = [
   { name: "BIZNISOFT_COMPANY_ID", group: "biznisoft", kind: "integer" },
   { name: "BIZNISOFT_COMPANY_YEAR", group: "biznisoft", kind: "integer" },
   { name: "BIZNISOFT_USERNAME", group: "biznisoft", kind: "text" },
-  { name: "BIZNISOFT_PASSWORD", group: "biznisoft", kind: "present" },
+  { name: "BIZNISOFT_PASSWORD", group: "biznisoft", kind: "present", optional: true },
   { name: "AUTO_CREATE_PRICE_TASKS", group: "config", kind: "boolean" },
   { name: "BIZNISOFT_SOAP_BASE_URL", group: "optional", kind: "http-url", optional: true }
 ];

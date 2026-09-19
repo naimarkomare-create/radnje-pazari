@@ -214,14 +214,14 @@ Iste promenljive dodajte u Vercel:
 - `BIZNISOFT_COMPANY_ID`
 - `BIZNISOFT_COMPANY_YEAR`
 - `BIZNISOFT_USERNAME`
-- `BIZNISOFT_PASSWORD`
+- `BIZNISOFT_PASSWORD` (opciono; izostavljena ili prazna vrednost se šalje kao prazan string)
 - `AUTO_CREATE_PRICE_TASKS`
 
 `SUPABASE_SERVICE_ROLE_KEY` se koristi samo na serveru za postojeće privilegovane operacije, uključujući BizniSoft sinhronizaciju i cleanup. Nikada ga ne dodavati sa `NEXT_PUBLIC_` prefiksom.
 
 `CRON_SECRET` štiti dnevnu cron rutu. `CLEANUP_SECRET` štiti ručni cleanup slika; vrednosti ne moraju biti iste.
 
-BizniSoft promenljive i sve tajne su server-only. `BIZNISOFT_PASSWORD` sme biti prazan ako je tako podešen nalog. Ostavite `AUTO_CREATE_PRICE_TASKS=false` dok posebno ne odobrite automatsko pravljenje zadataka. Lokalni discovery skriptovi mogu dodatno koristiti opcioni `BIZNISOFT_SOAP_BASE_URL`; aplikacija u produkciji ga ne koristi.
+BizniSoft promenljive i sve tajne su server-only. `BIZNISOFT_PASSWORD` je opciona promenljiva: kada nedostaje ili je prazna, SOAP prijava dobija tačno prazan string. `BIZNISOFT_USERNAME` ostaje obavezan. Ostavite `AUTO_CREATE_PRICE_TASKS=false` dok posebno ne odobrite automatsko pravljenje zadataka. Lokalni discovery skriptovi mogu dodatno koristiti opcioni `BIZNISOFT_SOAP_BASE_URL`; aplikacija u produkciji ga ne koristi.
 
 ## Cleanup starih slika
 
@@ -317,7 +317,7 @@ npm run build
    - `BIZNISOFT_COMPANY_ID`
    - `BIZNISOFT_COMPANY_YEAR`
    - `BIZNISOFT_USERNAME`
-   - `BIZNISOFT_PASSWORD`
+   - `BIZNISOFT_PASSWORD` (opciono; prazna ili izostavljena vrednost je dozvoljena)
    - `AUTO_CREATE_PRICE_TASKS=false`
 5. Kliknite `Deploy`.
 

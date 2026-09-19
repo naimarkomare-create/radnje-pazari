@@ -314,6 +314,12 @@ async function main() {
   });
   await test("SOAP faults redact synthetic secrets; working namespace, empty password, sessions retained", async () => {
     const session = `{${objectId}}`, logs = [], requests = [];
+    const optionalPasswordClient = harness({ env: {
+      BIZNISOFT_COMPANY_ID: "1",
+      BIZNISOFT_COMPANY_YEAR: "2026",
+      BIZNISOFT_USERNAME: "EXAMPLE_USERNAME"
+    } }).load("lib/biznisoft/soap-client.ts");
+    assert.equal(optionalPasswordClient.getBizniSoftCredentials().password, "");
     const credentials = { soapUrl: "https://soap.invalid", companyId: "1", companyYear: "2026", username: "EXAMPLE_USERNAME", password: "" };
     const client = harness({ console: { log: (...a) => logs.push(a.join(" ")) }, fetch: async (_, init) => {
       requests.push(init);
