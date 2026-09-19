@@ -13,11 +13,13 @@ export default async function StoreEntriesPage() {
     supabase
       .from("daily_revenue_reports")
       .select("id, store_id, user_id, report_date, shift, cash_revenue, check_revenue, card_revenue, bank_transfer_revenue, correction_revenue, edopuna_revenue, total_revenue, note, created_at")
+      .eq("store_id", profile.store_id)
       .order("created_at", { ascending: false })
       .limit(10),
     supabase
       .from("temperature_reports")
       .select("id, store_id, user_id, device_id, report_date, shift, device_name, temperature, note, created_at")
+      .eq("store_id", profile.store_id)
       .order("created_at", { ascending: false })
       .limit(10),
     supabase
@@ -25,6 +27,7 @@ export default async function StoreEntriesPage() {
       .select(
         "id, store_id, user_id, request_date, note, created_at, produce_request_items(id, batch_id, produce_item_id, quantity, created_at, produce_items(id, name, unit, sort_order))"
       )
+      .eq("store_id", profile.store_id)
       .order("created_at", { ascending: false })
       .limit(10)
   ]);

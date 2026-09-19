@@ -18,8 +18,9 @@ type TaskWithAssignments = {
 
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
 ) {
+  const params = await paramsPromise;
   if (!isUuid(params.id)) {
     return NextResponse.json({ error: "Zadatak nije pronađen." }, { status: 404 });
   }

@@ -20,12 +20,13 @@ import { createClient } from "@/lib/supabase/server";
 import type { BizniSoftSaleActionWithArticle, Store } from "@/lib/types";
 
 export default async function BizniSoftActionDetailPage({
-  params,
-  searchParams
+  params: paramsPromise,
+  searchParams: searchParamsPromise
 }: {
-  params: { groupKey: string };
-  searchParams: { page?: string; q?: string };
+  params: Promise<{ groupKey: string }>;
+  searchParams: Promise<{ page?: string; q?: string }>;
 }) {
+  const [params, searchParams] = await Promise.all([paramsPromise, searchParamsPromise]);
   await requireAdmin();
   const supabase = createClient();
   const decodedGroupKey = safeDecode(params.groupKey);

@@ -24,7 +24,8 @@ const realLibraries = new Set([
   "lib/security/api.ts", "lib/security/request.ts", "lib/security/validation.ts",
   "lib/security/sync-lock.ts", "lib/return-proposals.ts", "lib/date.ts", "lib/pagination.ts",
   "lib/revenue.ts", "lib/temperature-slots.ts", "lib/shelf-photos.ts",
-  "lib/biznisoft/soap-client.ts", "lib/excel-templates.ts", "lib/produce.ts"
+  "lib/biznisoft/soap-client.ts", "lib/biznisoft/sync-suppliers.ts", "lib/excel-templates.ts", "lib/produce.ts",
+  "lib/temperature-bulk-export.ts"
 ]);
 
 // Load actual TS handlers, replacing only their external boundaries, never making real requests.
@@ -233,6 +234,22 @@ async function main() {
     assert.equal(date.isValidIsoDate("2026-02-30"), false);
     assert.equal(date.businessDateInBelgrade(0, new Date("2026-07-20T22:30:00Z")), "2026-07-21");
   });
+  await test("pagination, supplier snapshots and diagnostic redaction remain bounded", () => {
+    const h = harness();
+    const pagination = h.load("lib/pagination.ts");
+    const returns = h.load("lib/return-proposals.ts");
+    const suppliers = h.load("lib/biznisoft/sync-suppliers.ts");
+    assert.equal(pagination.positiveInteger("2", 1), 2);
+    assert.equal(pagination.positiveInteger("-1", 1), 1);
+    assert.equal(pagination.positiveInteger("not-a-page", 1), 1);
+    assert.deepEqual(Array.from(returns.distinctSupplierNames([
+      { supplier_name: "Dobavljač B" }, { supplier_name: " Dobavljač A " },
+      { supplier_name: "Dobavljač B" }, { supplier_name: null }
+    ])), ["Dobavljač A", "Dobavljač B"]);
+    assert.equal(returns.supplierRelationSourceLabel("manual_selection"), "Ručno izabrano");
+    const safe = suppliers.safeBizniSoftError(new Error(`<Username>EXAMPLE_USERNAME</Username><Password>EXAMPLE_PASSWORD</Password>{${objectId}}`));
+    for (const secret of ["EXAMPLE_USERNAME", "EXAMPLE_PASSWORD", objectId]) assert.ok(!safe.includes(secret));
+  });
   await test("temperature uses assigned store/device, accepts negative values, rejects invalid slot/date", async () => {
     const db = database(() => ({ data: { id: objectId, name: "Test device" }, error: null }));
     const action = harness({ db }).load("app/store/actions.ts").submitTemperature;
@@ -245,6 +262,33 @@ async function main() {
     form.set("shift", "Unexpected"); assert.equal((await action({}, form)).ok, false);
     form.set("shift", "Prva smena"); form.set("report_date", "2026-02-30");
     assert.equal((await action({}, form)).ok, false);
+  });
+  await test("temperature parsing and required slot order stay stable", async () => {
+    const db = database(() => ({ data: { id: objectId, name: "Test device" }, error: null }));
+    const action = harness({ db }).load("app/store/actions.ts").submitTemperature;
+    const slots = harness().load("lib/temperature-slots.ts");
+    assert.deepEqual(["Prva smena", "Međusmena", "Druga smena"].map(slots.temperatureSlotIndex), [0, 1, 2]);
+    assert.equal(slots.temperatureSlotIndex("Treća smena"), 2);
+    const form = new FormData();
+    form.set("device_id", objectId); form.set("report_date", "2026-09-15"); form.set("shift", "Međusmena");
+    for (const [input, expected] of [["-18", -18], ["-18.5", -18.5], ["-18,5", -18.5], ["0", 0], ["4", 4]]) {
+      form.set("temperature", input);
+      assert.equal((await action({}, form)).ok, true, input);
+      assert.equal(db.calls.findLast((call) => call.verb === "insert").payload.temperature, expected);
+    }
+    form.set("temperature", "-");
+    assert.equal((await action({}, form)).ok, false);
+  });
+  await test("store list pages scope reads to the authenticated store", () => {
+    for (const [file, count] of [
+      ["app/store/temperature/page.tsx", 2],
+      ["app/store/trebovanja/page.tsx", 1],
+      ["app/store/kontrola-police/page.tsx", 1],
+      ["app/store/moji-unosi/page.tsx", 3]
+    ]) {
+      const source = read(file);
+      assert.equal((source.match(/\.eq\("store_id", profile\.store_id\)/g) || []).length, count, file);
+    }
   });
   await test("photo paths reject traversal, URL encoding and different task/store ownership", () => {
     const { objectPathFromStoragePath: parse, taskPhotoObjectPath: task } = harness().load("lib/shelf-photos.ts");
@@ -292,7 +336,7 @@ async function main() {
     assert.throws(() => fault.extractSoapReturn("<html>private upstream response</html>"), (e) => !e.message.includes("private upstream"));
   });
   await test("export templates treat user text as strings, preserve numbers and intentional formulas", async () => {
-    const ExcelJS = require("exceljs"), JSZip = require("jszip"), XLSX = require("xlsx");
+    const ExcelJS = require("exceljs"), JSZip = require("jszip");
     const { buildTemperatureChecklistWorkbook, buildProduceOrderWorkbook } = harness().load("lib/excel-templates.ts");
     const malicious = ["=HYPERLINK(\"https://example.invalid\",\"x\")", "+1+1", "-1+1", "@SUM(1,2)"];
     const { workbook } = await buildTemperatureChecklistWorkbook({ month: "2026-09", storeName: "Radnja 1", deviceName: "Test", reports: malicious.map((note, i) => ({
@@ -309,8 +353,64 @@ async function main() {
     for (const sheet of sheets) assert.ok(!/<f[^>]*>[^<]*(HYPERLINK|1\+1|SUM\(1,2)/.test(await zip.file(sheet).async("string")));
     const produce = await buildProduceOrderWorkbook([]);
     assert.ok(produce.workbook.worksheets[0].getCell("L2").value.formula.startsWith("SUM("));
-    const legacy = XLSX.utils.aoa_to_sheet(malicious.map((s) => [s]));
-    malicious.forEach((_, i) => { assert.equal(legacy[`A${i + 1}`].t, "s"); assert.equal(legacy[`A${i + 1}`].f, undefined); });
+  });
+  await test("ExcelJS browser bundle writes the pazar range workbook without xlsx", async () => {
+    const BrowserExcelJS = require("exceljs/dist/exceljs.min.js");
+    const workbook = new BrowserExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Svi pazari");
+    worksheet.columns = [
+      { header: "Datum", key: "Datum" },
+      { header: "Radnja", key: "Radnja" },
+      { header: "Gotovina", key: "Gotovina" }
+    ];
+    worksheet.addRows([{ Datum: "2026-09-17", Radnja: "Radnja 1", Gotovina: 12.5 }]);
+    const blob = new Blob([await workbook.xlsx.writeBuffer()]);
+    const reopened = new BrowserExcelJS.Workbook();
+    await reopened.xlsx.load(await blob.arrayBuffer());
+    assert.equal(reopened.getWorksheet("Svi pazari").getCell("C2").value, 12.5);
+  });
+  await test("temperature checklist maps 07/14/20 to numeric rows and sanitizes filenames", async () => {
+    const { buildTemperatureChecklistWorkbook, excelDownloadResponse } = harness().load("lib/excel-templates.ts");
+    const { workbook } = await buildTemperatureChecklistWorkbook({
+      month: "2026-09", storeName: "Radnja 1", deviceName: "Test", reports: [
+        { report_date: "2026-09-01", shift: "Druga smena", temperature: -20, note: null, created_at: "2026-09-01T20:00:00Z" },
+        { report_date: "2026-09-01", shift: "Prva smena", temperature: -18, note: null, created_at: "2026-09-01T07:00:00Z" },
+        { report_date: "2026-09-01", shift: "Međusmena", temperature: -18.5, note: null, created_at: "2026-09-01T14:00:00Z" }
+      ]
+    });
+    const sheet = workbook.getWorksheet("List1");
+    assert.deepEqual([5, 6, 7].map((row) => sheet.getCell(row, 2).value), [-18, -18.5, -20]);
+    const response = await excelDownloadResponse(workbook, 'Radnja/1\r\n"test".xlsx');
+    const disposition = response.headers.get("content-disposition");
+    assert.ok(!disposition.includes("\r") && !disposition.includes("\n"));
+    assert.ok(!disposition.includes("Radnja/1"));
+  });
+  await test("bulk temperature ZIP keeps each device and store in its own workbook", async () => {
+    const ExcelJS = require("exceljs"), JSZip = require("jszip");
+    const exportZip = harness().load("lib/temperature-bulk-export.ts").buildBulkTemperatureZip;
+    const devices = [
+      { id: objectId, store_id: store1, name: "Komora 1", sort_order: 0 },
+      { id: user1, store_id: store2, name: "Frižider 1", sort_order: 0 }
+    ];
+    const { fileCount, fileNames, output } = await exportZip({
+      devices,
+      month: "2026-09",
+      reports: [
+        { store_id: store1, device_id: objectId, report_date: "2026-09-01", shift: "Prva smena", temperature: -18, note: null, created_at: "2026-09-01T07:00:00Z" },
+        { store_id: store2, device_id: user1, report_date: "2026-09-01", shift: "Prva smena", temperature: 4, note: null, created_at: "2026-09-01T07:00:00Z" }
+      ],
+      stores: [{ id: store1, name: "Radnja 1" }, { id: store2, name: "Radnja 2" }]
+    });
+    assert.equal(fileCount, 2);
+    assert.equal(fileNames.length, 2);
+    const archive = await JSZip.loadAsync(output);
+    for (const [store, expected] of [["Radnja-1/", -18], ["Radnja-2/", 4]]) {
+      const fileName = fileNames.find((name) => name.startsWith(store));
+      assert.ok(fileName, store);
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(await archive.file(fileName).async("nodebuffer"));
+      assert.equal(workbook.getWorksheet("List1").getCell("B5").value, expected);
+    }
   });
   await test("static RLS baseline and new migration protect exposed tables/view/history/storage", () => {
     const sql = filesIn("supabase/migrations").filter((f) => f.endsWith(".sql")).map(read).join("\n");
@@ -343,6 +443,24 @@ async function main() {
     }
     for (const file of sourceFiles.filter((f) => /^[\s]*["']use client["']/.test(read(f)))) visit(file);
     assert.ok(read("lib/supabase/service.ts").includes('import "server-only"'));
+  });
+  await test("critical mobile layouts retain narrow-viewport overflow guards", () => {
+    const globals = read("app/globals.css");
+    const pazarAndTemperature = read("app/store/StoreForms.tsx");
+    const produce = read("app/store/trebovanja/ProduceOrderForm.tsx");
+    const tasks = read("app/store/StoreTasks.tsx");
+    const returns = read("components/povrati/ReturnProposalApp.tsx");
+    const dialog = read("components/povrati/ConfirmationDialog.tsx");
+    assert.match(globals, /input,[\s\S]*font-size:\s*16px/);
+    assert.ok(globals.includes("px-4") && globals.includes("max-w-7xl"));
+    assert.ok(pazarAndTemperature.includes("sm:grid-cols-2") && pazarAndTemperature.includes("min-w-0 flex-1"));
+    assert.ok(produce.includes("min-w-0 overflow-hidden") && produce.includes("minmax(0,1fr)"));
+    assert.ok(tasks.includes("grid gap-4 lg:grid-cols-2") && !tasks.includes("min-w-["));
+    assert.ok(returns.includes("overflow-x-auto") && returns.includes("sm:grid-cols-[1fr_auto]"));
+    assert.ok(dialog.includes("fixed inset-0") && dialog.includes("w-full max-w-md"));
+    for (const source of [pazarAndTemperature, produce, tasks, returns, dialog]) {
+      assert.ok(!/min-w-\[(?:[5-9]\d\d|\d{4,})px\]/.test(source));
+    }
   });
   await test("security headers and private API caching remain configured", async () => {
     const config = (await import(pathToFileURL(path.join(root, "next.config.mjs")))).default;

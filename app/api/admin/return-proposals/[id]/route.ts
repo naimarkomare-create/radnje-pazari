@@ -10,8 +10,9 @@ const UUID_PATTERN =
 
 export async function DELETE(
   _request: Request,
-  { params }: { params: { id: string } }
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
 ) {
+  const params = await paramsPromise;
   const supabase = createClient();
   const authorization = await authorizeApi(supabase, true);
   if (!authorization.ok) return authorization.response;

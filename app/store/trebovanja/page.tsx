@@ -21,6 +21,7 @@ export default async function StoreProduceRequestsPage() {
       .select(
         "id, store_id, user_id, request_date, note, created_at, produce_request_items(id, batch_id, produce_item_id, quantity, created_at, produce_items(id, name, unit, sort_order))"
       )
+      .eq("store_id", profile.store_id)
       .order("created_at", { ascending: false })
       .limit(10)
   ]);

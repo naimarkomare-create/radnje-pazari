@@ -53,7 +53,12 @@ type SupplierFilterRow = {
 const PAGE_SIZE = 30;
 const ITEM_PAGE_SIZE = 50;
 
-export default async function AdminPovratiPage({ searchParams }: { searchParams: SearchParams }) {
+export default async function AdminPovratiPage({
+  searchParams: searchParamsPromise
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
+  const searchParams = await searchParamsPromise;
   await requireAdmin();
   const supabase = createClient();
 

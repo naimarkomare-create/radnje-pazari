@@ -32,7 +32,12 @@ const filterOptions = [
 
 const PAGE_SIZE = 50;
 
-export default async function BizniSoftPriceChangesPage({ searchParams }: { searchParams: PageSearchParams }) {
+export default async function BizniSoftPriceChangesPage({
+  searchParams: searchParamsPromise
+}: {
+  searchParams: Promise<PageSearchParams>;
+}) {
+  const searchParams = await searchParamsPromise;
   await requireAdmin();
   const supabase = createClient();
   const today = todayInBelgrade();

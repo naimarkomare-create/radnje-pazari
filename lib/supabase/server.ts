@@ -1,4 +1,4 @@
-import { cookies } from "next/headers";
+import { cookies, type UnsafeUnwrappedCookies } from "next/headers";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { getSupabaseEnv } from "@/lib/env";
 import { authCookieOptions } from "@/lib/supabase/cookie-options";
@@ -10,7 +10,9 @@ type CookieToSet = {
 };
 
 export function createClient() {
-  const cookieStore = cookies();
+  // Next 15 keeps synchronous request access for compatibility. Keeping this
+  // wrapper synchronous avoids changing every existing Supabase call site.
+  const cookieStore = cookies() as unknown as UnsafeUnwrappedCookies;
   const { url, anonKey } = getSupabaseEnv();
 
   return createServerClient(url, anonKey, {

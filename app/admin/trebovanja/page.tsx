@@ -9,10 +9,11 @@ import { createClient } from "@/lib/supabase/server";
 import type { ProduceRequestBatch, Store } from "@/lib/types";
 
 export default async function AdminProduceRequestsPage({
-  searchParams
+  searchParams: searchParamsPromise
 }: {
-  searchParams: { date?: string; store?: string; store_id?: string };
+  searchParams: Promise<{ date?: string; store?: string; store_id?: string }>;
 }) {
+  const searchParams = await searchParamsPromise;
   await requireAdmin();
   const supabase = createClient();
   const selectedDate = typeof searchParams.date === "string" && searchParams.date ? searchParams.date : todayInBelgrade();

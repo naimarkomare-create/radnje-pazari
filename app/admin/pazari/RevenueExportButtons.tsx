@@ -35,34 +35,41 @@ export function RevenueExportButtons({
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Export nije uspeo.");
 
-      const XLSX = await import("xlsx");
+      const ExcelJS = (await import("exceljs")).default;
       const rows = buildRows((payload.reports ?? []) as RevenueExportReport[], stores, dateFrom, dateTo);
-    const excelRows: Array<Record<string, string | number>> =
-      type === "all"
-        ? rows.map((row) => ({
-            Datum: row.date,
-            Radnja: row.storeName,
-            Gotovina: row.cash,
-            Ček: row.check,
-            Kartica: row.card,
-            Virman: row.bankTransfer,
-            Ispravka: row.correction,
-            eDopuna: row.edopuna,
-            Ukupno: row.total,
-            Status: row.status
-          }))
-        : rows.map((row) => ({
-            Datum: row.date,
-            Radnja: row.storeName,
-            Gotovina: row.cash,
-            Status: row.status
-          }));
+      const excelRows: Array<Record<string, string | number>> =
+        type === "all"
+          ? rows.map((row) => ({
+              Datum: row.date,
+              Radnja: row.storeName,
+              Gotovina: row.cash,
+              Ček: row.check,
+              Kartica: row.card,
+              Virman: row.bankTransfer,
+              Ispravka: row.correction,
+              eDopuna: row.edopuna,
+              Ukupno: row.total,
+              Status: row.status
+            }))
+          : rows.map((row) => ({
+              Datum: row.date,
+              Radnja: row.storeName,
+              Gotovina: row.cash,
+              Status: row.status
+            }));
 
       excelRows.push(type === "all" ? buildAllTotalRow(rows) : buildCashTotalRow(rows));
-      const worksheet = XLSX.utils.json_to_sheet(excelRows);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, type === "all" ? "Svi pazari" : "Gotovina");
-      XLSX.writeFile(workbook, buildFileName(type, dateFrom, dateTo));
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet(type === "all" ? "Svi pazari" : "Gotovina");
+      worksheet.columns = Object.keys(excelRows[0]).map((key) => ({ header: key, key }));
+      worksheet.addRows(excelRows);
+      const output = await workbook.xlsx.writeBuffer();
+      await downloadResponseFile(
+        new Response(new Blob([output], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        })),
+        buildFileName(type, dateFrom, dateTo)
+      );
     } catch (exportError) {
       setError(exportError instanceof Error ? exportError.message : "Export nije uspeo.");
     } finally {

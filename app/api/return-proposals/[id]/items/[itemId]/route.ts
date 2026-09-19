@@ -7,7 +7,8 @@ import type { ReturnProposal } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string; itemId: string } }) {
+export async function PATCH(request: NextRequest, { params: paramsPromise }: { params: Promise<{ id: string; itemId: string }> }) {
+  const params = await paramsPromise;
   const supabase = createClient();
   const authorization = await authorizeApi(supabase, false);
   if (!authorization.ok) return authorization.response;
@@ -62,7 +63,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   return NextResponse.json({ item: data });
 }
 
-export async function DELETE(_request: NextRequest, { params }: { params: { id: string; itemId: string } }) {
+export async function DELETE(_request: NextRequest, { params: paramsPromise }: { params: Promise<{ id: string; itemId: string }> }) {
+  const params = await paramsPromise;
   const supabase = createClient();
   const authorization = await authorizeApi(supabase, false);
   if (!authorization.ok) return authorization.response;

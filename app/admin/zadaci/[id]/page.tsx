@@ -8,7 +8,8 @@ import { computeTaskStatus, taskPriorityLabel, taskStatusLabel, withSignedTaskPh
 import { createClient } from "@/lib/supabase/server";
 import type { StoreTask, StoreTaskAssignment } from "@/lib/types";
 
-export default async function AdminTaskDetailPage({ params }: { params: { id: string } }) {
+export default async function AdminTaskDetailPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await paramsPromise;
   await requireAdmin();
   const supabase = createClient();
   const result = await supabase

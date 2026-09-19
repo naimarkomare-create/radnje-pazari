@@ -14,7 +14,8 @@ import type { ReturnProposal } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_request: NextRequest, { params: paramsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await paramsPromise;
   const supabase = createClient();
   const authorization = await authorizeApi(supabase, false);
   if (!authorization.ok) return authorization.response;
@@ -44,7 +45,8 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
   return NextResponse.json({ proposal: { ...proposal, item_count: count ?? items?.length ?? 0, return_proposal_items: items ?? [] } });
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, { params: paramsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await paramsPromise;
   const supabase = createClient();
   const authorization = await authorizeApi(supabase, false);
   if (!authorization.ok) return authorization.response;

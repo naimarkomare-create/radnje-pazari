@@ -6,7 +6,8 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params: paramsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await paramsPromise;
   const supabase = createClient();
   const authorization = await authorizeApi(supabase, true);
   if (!authorization.ok) return authorization.response;

@@ -14,11 +14,13 @@ export default async function StoreTemperaturePage() {
     supabase
     .from("temperature_reports")
     .select("id, store_id, user_id, device_id, report_date, shift, device_name, temperature, note, created_at")
+    .eq("store_id", profile.store_id)
     .order("created_at", { ascending: false })
       .limit(30),
     supabase
       .from("temperature_devices")
       .select("id, store_id, name, device_type, min_allowed, max_allowed, active, sort_order, created_at")
+      .eq("store_id", profile.store_id)
       .eq("active", true)
       .order("sort_order")
       .order("name")

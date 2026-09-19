@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { BizniSoftTurnoverResult } from "@/lib/biznisoft/turnover-types";
-import { BELGRADE_TIME_ZONE, formatSerbianIsoDate } from "@/lib/date";
+import { BELGRADE_TIME_ZONE, formatSerbianIsoDate, todayInBelgrade } from "@/lib/date";
 
 type DayState = {
   data: BizniSoftTurnoverResult | null;
@@ -28,6 +29,7 @@ export function TurnoverDashboard({
   yesterday: string;
   dayBeforeYesterday: string;
 }) {
+  const router = useRouter();
   const dates = [today, yesterday, dayBeforeYesterday];
   const [days, setDays] = useState<Record<string, DayState>>(() =>
     Object.fromEntries(
@@ -39,6 +41,7 @@ export function TurnoverDashboard({
   const controllers = useRef(new Map<string, AbortController>());
   const countdownRef = useRef(REFRESH_SECONDS);
   const lastTodayAttemptAt = useRef(0);
+  const rolloverRequested = useRef(false);
 
   const requestTurnover = useCallback(
     async (businessDate: string, force = false) => {
@@ -117,6 +120,7 @@ export function TurnoverDashboard({
   );
 
   useEffect(() => {
+    rolloverRequested.current = false;
     let active = true;
     const activeControllers = controllers.current;
     const activeRequestLocks = requestLocks.current;
@@ -139,8 +143,16 @@ export function TurnoverDashboard({
   }, [dayBeforeYesterday, requestTurnover, today, yesterday]);
 
   useEffect(() => {
+    const refreshDatesIfNeeded = () => {
+      if (todayInBelgrade() === today || rolloverRequested.current) return false;
+      rolloverRequested.current = true;
+      router.refresh();
+      return true;
+    };
+
     const timer = window.setInterval(() => {
       if (document.visibilityState !== "visible") return;
+      if (refreshDatesIfNeeded()) return;
 
       countdownRef.current -= 1;
       if (countdownRef.current <= 0) {
@@ -155,6 +167,7 @@ export function TurnoverDashboard({
 
     const handleVisibilityChange = () => {
       if (document.visibilityState !== "visible") return;
+      if (refreshDatesIfNeeded()) return;
 
       const elapsedSeconds = Math.floor((Date.now() - lastTodayAttemptAt.current) / 1000);
       if (elapsedSeconds >= REFRESH_SECONDS) {
@@ -171,7 +184,7 @@ export function TurnoverDashboard({
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [requestTurnover, today]);
+  }, [requestTurnover, router, today]);
 
   const todayState = days[today];
 

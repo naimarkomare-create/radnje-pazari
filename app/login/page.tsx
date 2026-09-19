@@ -3,10 +3,11 @@ import { dashboardPathFor, getCurrentProfile } from "@/lib/auth";
 import { LoginForm } from "@/app/login/LoginForm";
 
 export default async function LoginPage({
-  searchParams
+  searchParams: searchParamsPromise
 }: {
-  searchParams?: { reason?: string };
+  searchParams?: Promise<{ reason?: string }>;
 }) {
+  const searchParams = searchParamsPromise ? await searchParamsPromise : undefined;
   const profile = await getCurrentProfile();
 
   if (profile) {

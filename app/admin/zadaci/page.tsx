@@ -14,10 +14,11 @@ import type { Store, StoreTask } from "@/lib/types";
 const PAGE_SIZE = 30;
 
 export default async function AdminTasksPage({
-  searchParams
+  searchParams: searchParamsPromise
 }: {
-  searchParams: { deleted?: string; page?: string; warning?: string };
+  searchParams: Promise<{ deleted?: string; page?: string; warning?: string }>;
 }) {
+  const searchParams = await searchParamsPromise;
   await requireAdmin();
   const supabase = createClient();
   const page = positiveInteger(searchParams.page, 1);

@@ -13,8 +13,9 @@ export const dynamic = "force-dynamic";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
 ) {
+  const params = await paramsPromise;
   const supabase = createClient();
   const authorization = await authorizeApi(supabase, false);
   if (!authorization.ok) return authorization.response;

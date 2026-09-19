@@ -13,10 +13,11 @@ import { createClient } from "@/lib/supabase/server";
 import type { Store, TemperatureReport } from "@/lib/types";
 
 export default async function AdminTemperaturePage({
-  searchParams
+  searchParams: searchParamsPromise
 }: {
-  searchParams: { date?: string; store?: string; store_id?: string; month?: string; device_id?: string; shift?: string; page?: string };
+  searchParams: Promise<{ date?: string; store?: string; store_id?: string; month?: string; device_id?: string; shift?: string; page?: string }>;
 }) {
+  const searchParams = await searchParamsPromise;
   await requireAdmin();
   const supabase = createClient();
   const selectedDate = typeof searchParams.date === "string" && searchParams.date ? searchParams.date : todayInBelgrade();

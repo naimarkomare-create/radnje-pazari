@@ -194,7 +194,13 @@ NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 CLEANUP_SECRET=your-long-random-cleanup-secret
-CRON_SECRET=your-long-random-cleanup-secret
+CRON_SECRET=your-long-random-cron-secret
+BIZNISOFT_SOAP_URL=http://your-biznisoft-host:port/soap/IBSWebService
+BIZNISOFT_COMPANY_ID=your-company-id
+BIZNISOFT_COMPANY_YEAR=2026
+BIZNISOFT_USERNAME=your-username
+BIZNISOFT_PASSWORD=
+AUTO_CREATE_PRICE_TASKS=false
 ```
 
 Iste promenljive dodajte u Vercel:
@@ -204,10 +210,18 @@ Iste promenljive dodajte u Vercel:
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `CLEANUP_SECRET`
 - `CRON_SECRET`
+- `BIZNISOFT_SOAP_URL`
+- `BIZNISOFT_COMPANY_ID`
+- `BIZNISOFT_COMPANY_YEAR`
+- `BIZNISOFT_USERNAME`
+- `BIZNISOFT_PASSWORD`
+- `AUTO_CREATE_PRICE_TASKS`
 
 `SUPABASE_SERVICE_ROLE_KEY` se koristi samo na serveru za postojeće privilegovane operacije, uključujući BizniSoft sinhronizaciju i cleanup. Nikada ga ne dodavati sa `NEXT_PUBLIC_` prefiksom.
 
 `CRON_SECRET` štiti dnevnu cron rutu. `CLEANUP_SECRET` štiti ručni cleanup slika; vrednosti ne moraju biti iste.
+
+BizniSoft promenljive i sve tajne su server-only. `BIZNISOFT_PASSWORD` sme biti prazan ako je tako podešen nalog. Ostavite `AUTO_CREATE_PRICE_TASKS=false` dok posebno ne odobrite automatsko pravljenje zadataka. Lokalni discovery skriptovi mogu dodatno koristiti opcioni `BIZNISOFT_SOAP_BASE_URL`; aplikacija u produkciji ga ne koristi.
 
 ## Cleanup starih slika
 
@@ -296,9 +310,20 @@ npm run build
 4. Dodajte environment promenljive:
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+   - `CLEANUP_SECRET`
+   - `CRON_SECRET`
+   - `BIZNISOFT_SOAP_URL`
+   - `BIZNISOFT_COMPANY_ID`
+   - `BIZNISOFT_COMPANY_YEAR`
+   - `BIZNISOFT_USERNAME`
+   - `BIZNISOFT_PASSWORD`
+   - `AUTO_CREATE_PRICE_TASKS=false`
 5. Kliknite `Deploy`.
 
 Posle deploymenta aplikacija radi online na Vercel-u. Vaš računar ne mora da bude uključen jer su frontend na Vercel-u, a podaci u Supabase-u.
+
+Pre pilot rada pratite [pilot kontrolnu listu](docs/PILOT-CHECKLIST.md). Postupak za incident i vraćanje podataka je u [recovery runbook-u](docs/RECOVERY.md).
 
 ## Finalna ručna provera
 

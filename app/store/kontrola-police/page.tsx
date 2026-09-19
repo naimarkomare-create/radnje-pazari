@@ -15,6 +15,7 @@ export default async function StoreShelfPhotoPage() {
   const result = await supabase
     .from("produce_shelf_photo_checks")
     .select("id, store_id, user_id, check_date, photo_url, storage_path, note, created_at")
+    .eq("store_id", profile.store_id)
     .order("created_at", { ascending: false })
     .limit(12);
   const photos = await withSignedShelfPhotoUrls(supabase, (result.data ?? []) as ProduceShelfPhotoCheck[]);

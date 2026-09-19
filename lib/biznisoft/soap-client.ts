@@ -2,6 +2,7 @@ import "server-only";
 
 const SOAP_NAMESPACE = "urn:BSWebSericeIntf-IBSWebService";
 const SOAP_TIMEOUT_MS = 20_000;
+let insecureTransportWarningLogged = false;
 
 export type BizniSoftCredentials = {
   soapUrl: string;
@@ -13,6 +14,7 @@ export type BizniSoftCredentials = {
 
 export function getBizniSoftCredentials(): BizniSoftCredentials {
   const soapUrl = process.env.BIZNISOFT_SOAP_URL || "http://79.175.71.83:58080/soap/IBSWebService";
+  warnOnceForInsecureProductionTransport(soapUrl);
   const companyId = process.env.BIZNISOFT_COMPANY_ID || "";
   const companyYear = process.env.BIZNISOFT_COMPANY_YEAR || "2026";
   const username = process.env.BIZNISOFT_USERNAME || "";
@@ -31,6 +33,19 @@ export function getBizniSoftCredentials(): BizniSoftCredentials {
   }
 
   return { soapUrl, companyId, companyYear, username, password };
+}
+
+function warnOnceForInsecureProductionTransport(soapUrl: string) {
+  if (
+    process.env.NODE_ENV === "production" &&
+    soapUrl.toLowerCase().startsWith("http://") &&
+    !insecureTransportWarningLogged
+  ) {
+    insecureTransportWarningLogged = true;
+    console.warn(
+      "BizniSoft SOAP uses unencrypted HTTP. Use only through a trusted LAN, VPN or protected tunnel."
+    );
+  }
 }
 
 export async function getSessionHandle(credentials = getBizniSoftCredentials()) {

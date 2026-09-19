@@ -17,7 +17,7 @@ export async function signOut() {
     console.error("Supabase sign out failed; clearing local auth cookies.", {
       authError: safeAuthErrorDetails(error)
     });
-    const cookieStore = cookies();
+    const cookieStore = await cookies();
     cookieStore
       .getAll()
       .filter((cookie) => isSupabaseAuthCookieName(cookie.name))

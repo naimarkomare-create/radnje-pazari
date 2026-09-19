@@ -43,7 +43,12 @@ type SaleActionGroupSummary = {
 
 const PAGE_SIZE = 20;
 
-export default async function AdminBizniSoftActionsPage({ searchParams }: { searchParams: PageSearchParams }) {
+export default async function AdminBizniSoftActionsPage({
+  searchParams: searchParamsPromise
+}: {
+  searchParams: Promise<PageSearchParams>;
+}) {
+  const searchParams = await searchParamsPromise;
   await requireAdmin();
   const supabase = createClient();
   const today = todayInBelgrade();

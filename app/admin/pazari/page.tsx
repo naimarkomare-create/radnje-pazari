@@ -11,10 +11,11 @@ import { createClient } from "@/lib/supabase/server";
 import type { DailyRevenueReport, Store } from "@/lib/types";
 
 export default async function AdminDailyRevenuePage({
-  searchParams
+  searchParams: searchParamsPromise
 }: {
-  searchParams: { date?: string; date_from?: string; date_to?: string; page?: string; store?: string; store_id?: string };
+  searchParams: Promise<{ date?: string; date_from?: string; date_to?: string; page?: string; store?: string; store_id?: string }>;
 }) {
+  const searchParams = await searchParamsPromise;
   await requireAdmin();
   const supabase = createClient();
   const today = todayInBelgrade();
