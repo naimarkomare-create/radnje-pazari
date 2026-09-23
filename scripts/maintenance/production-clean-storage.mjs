@@ -43,24 +43,21 @@ console.log("Unlinked bucket objects are intentionally left untouched.");
 
 if (!APPLY) {
   console.log("No files were removed. Re-run with --apply --confirm=DELETE_LINKED_OPERATIONAL_PHOTOS after backup and review.");
-  process.exit(0);
-}
-
-if (!CONFIRMED) {
+} else if (!CONFIRMED) {
   console.error("Refusing to remove files without --confirm=DELETE_LINKED_OPERATIONAL_PHOTOS.");
-  process.exit(2);
-}
+  process.exitCode = 2;
+} else {
+  let removed = 0;
+  for (let index = 0; index < objectPaths.length; index += 100) {
+    const chunk = objectPaths.slice(index, index + 100);
+    const { data, error } = await supabase.storage.from(BUCKET).remove(chunk);
+    if (error) throw new Error(`Storage cleanup failed after ${removed} removals: ${error.message}`);
+    removed += data?.length ?? 0;
+  }
 
-let removed = 0;
-for (let index = 0; index < objectPaths.length; index += 100) {
-  const chunk = objectPaths.slice(index, index + 100);
-  const { data, error } = await supabase.storage.from(BUCKET).remove(chunk);
-  if (error) throw new Error(`Storage cleanup failed after ${removed} removals: ${error.message}`);
-  removed += data?.length ?? 0;
+  console.log(`Storage objects removed: ${removed}`);
+  console.log("Now run production-clean-start.sql to delete the linked operational database rows.");
 }
-
-console.log(`Storage objects removed: ${removed}`);
-console.log("Now run production-clean-start.sql to delete the linked operational database rows.");
 
 async function fetchAll(table, columns) {
   const rows = [];
