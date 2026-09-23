@@ -11,6 +11,8 @@
     "test:security": "node scripts/security-tests.cjs",
     "test:production-security": "node scripts/production-security-smoke.mjs",
     "check:env": "node scripts/check-env.mjs",
+    "maintenance:clean-storage": "node scripts/maintenance/production-clean-storage.mjs",
+    "maintenance:create-accounts": "node scripts/create-production-accounts.mjs",
     "biznisoft:discover": "node scripts/biznisoft-discover.js",
     "biznisoft:describe": "node scripts/biznisoft-describe.js",
     "biznisoft:describe-article-fields": "node scripts/biznisoft-describe-article-fields.js",

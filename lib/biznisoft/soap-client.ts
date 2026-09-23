@@ -13,7 +13,11 @@ export type BizniSoftCredentials = {
 };
 
 export function getBizniSoftCredentials(): BizniSoftCredentials {
-  const soapUrl = process.env.BIZNISOFT_SOAP_URL || "http://79.175.71.83:58080/soap/IBSWebService";
+  const soapUrl = process.env.BIZNISOFT_SOAP_URL?.trim() ?? "";
+  if (!soapUrl) {
+    throw new Error("BIZNISOFT_SOAP_URL must not be empty.");
+  }
+  assertSoapUrl(soapUrl);
   warnOnceForInsecureProductionTransport(soapUrl);
   const companyId = process.env.BIZNISOFT_COMPANY_ID || "";
   const companyYear = process.env.BIZNISOFT_COMPANY_YEAR || "2026";
@@ -33,6 +37,19 @@ export function getBizniSoftCredentials(): BizniSoftCredentials {
   }
 
   return { soapUrl, companyId, companyYear, username, password };
+}
+
+function assertSoapUrl(value: string) {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error("BIZNISOFT_SOAP_URL must be a valid URL.");
+  }
+
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("BIZNISOFT_SOAP_URL must use HTTP or HTTPS.");
+  }
 }
 
 function warnOnceForInsecureProductionTransport(soapUrl: string) {
@@ -69,10 +86,6 @@ export async function getSessionHandle(credentials = getBizniSoftCredentials()) 
     throw new Error("BizniSoft login returned empty session handle");
   }
 
-  console.log("BizniSoft login returned session: yes");
-  console.log(`Session length: ${sessionHandle.length}`);
-  console.log(`Session has braces: ${sessionHandle.startsWith("{") && sessionHandle.endsWith("}")}`);
-
   return sessionHandle;
 }
 
@@ -81,13 +94,13 @@ export async function getItems({
   itemType,
   jsonGetItemsRequest,
   limit = 1000,
-  soapUrl = process.env.BIZNISOFT_SOAP_URL || "http://79.175.71.83:58080/soap/IBSWebService"
+  soapUrl
 }: {
   sessionHandle: string;
   itemType: string;
   jsonGetItemsRequest: string;
   limit?: number;
-  soapUrl?: string;
+  soapUrl: string;
 }) {
   validateSessionHandle(sessionHandle);
 
@@ -111,14 +124,14 @@ export async function getItems2({
   jsonGetItemsRequest,
   offset,
   rowcount,
-  soapUrl = process.env.BIZNISOFT_SOAP_URL || "http://79.175.71.83:58080/soap/IBSWebService"
+  soapUrl
 }: {
   sessionHandle: string;
   itemType: string;
   jsonGetItemsRequest: string;
   offset: number;
   rowcount: number;
-  soapUrl?: string;
+  soapUrl: string;
 }) {
   validateSessionHandle(sessionHandle);
 
@@ -141,12 +154,12 @@ export async function getItem({
   sessionHandle,
   itemType,
   jsonGetItemRequest,
-  soapUrl = process.env.BIZNISOFT_SOAP_URL || "http://79.175.71.83:58080/soap/IBSWebService"
+  soapUrl
 }: {
   sessionHandle: string;
   itemType: string;
   jsonGetItemRequest: string;
-  soapUrl?: string;
+  soapUrl: string;
 }) {
   validateSessionHandle(sessionHandle);
 
@@ -165,8 +178,6 @@ export async function getItem({
 
 function validateSessionHandle(sessionHandle: string) {
   if (!sessionHandle || sessionHandle.length <= 10 || !sessionHandle.startsWith("{") || !sessionHandle.endsWith("}")) {
-    console.log(`Session length: ${sessionHandle?.length ?? 0}`);
-    console.log(`Session has braces: ${Boolean(sessionHandle?.startsWith("{") && sessionHandle?.endsWith("}"))}`);
     throw new Error("BizniSoft login returned invalid session handle.");
   }
 }

@@ -1,5 +1,6 @@
 import { publicErrorMessage } from "@/lib/security/validation";
 import { NextResponse, type NextRequest } from "next/server";
+import { businessDateInBelgrade } from "@/lib/date";
 import { objectPathFromStoragePath, SHELF_PHOTOS_BUCKET } from "@/lib/shelf-photos";
 import { createServiceClient } from "@/lib/supabase/service";
 
@@ -25,9 +26,7 @@ export async function POST(request: NextRequest) {
   }
 
   const supabase = createServiceClient();
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - 30);
-  const cutoffDate = cutoff.toISOString().slice(0, 10);
+  const cutoffDate = businessDateInBelgrade(-30);
 
   const { data, error } = await supabase
     .from("produce_shelf_photo_checks")

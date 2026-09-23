@@ -11,7 +11,9 @@ const store1 = "11111111-1111-4111-8111-111111111111";
 const store2 = "22222222-2222-4222-8222-222222222222";
 const user1 = "33333333-3333-4333-8333-333333333333";
 const objectId = "44444444-4444-4444-8444-444444444444";
+const user2 = "55555555-5555-4555-8555-555555555555";
 const worker = { id: user1, role: "store", store_id: store1 };
+const worker2 = { id: user2, role: "store", store_id: store2 };
 const admin = { id: user1, role: "admin", store_id: null };
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 function filesIn(dir) {
@@ -23,9 +25,9 @@ const forbiddenModule = new Proxy({}, { get: (_, key) => key === "__esModule" ? 
 const realLibraries = new Set([
   "lib/security/api.ts", "lib/security/request.ts", "lib/security/validation.ts",
   "lib/security/sync-lock.ts", "lib/return-proposals.ts", "lib/date.ts", "lib/pagination.ts",
-  "lib/revenue.ts", "lib/temperature-slots.ts", "lib/shelf-photos.ts",
+  "lib/revenue.ts", "lib/temperature-slots.ts", "lib/shelf-photos.ts", "lib/tasks.ts",
   "lib/biznisoft/soap-client.ts", "lib/biznisoft/sync-suppliers.ts", "lib/excel-templates.ts", "lib/produce.ts",
-  "lib/temperature-bulk-export.ts"
+  "lib/temperature-bulk-export.ts", "lib/supabase/auth-errors.ts"
 ]);
 
 // Load actual TS handlers, replacing only their external boundaries, never making real requests.
@@ -39,7 +41,11 @@ function harness(options = {}) {
       return profile;
     },
     requireStore: async () => { if (profile?.role !== "store") throw new Error("Denied"); return profile; },
-    requireAdmin: async () => { if (profile?.role !== "admin") throw new Error("Denied"); return profile; }
+    requireAdmin: async () => { if (profile?.role !== "admin") throw new Error("Denied"); return profile; },
+    isValidProfileBinding: (candidate) =>
+      candidate?.role === "admin"
+        ? candidate.store_id === null
+        : candidate?.role === "store" && typeof candidate.store_id === "string" && candidate.store_id.length > 0
   };
   function load(file) {
     file = file.replace(/\\/g, "/");
@@ -51,6 +57,8 @@ function harness(options = {}) {
       if (specifier === "next/server") return { NextRequest, NextResponse };
       if (specifier === "next/headers") return { headers: () => headers };
       if (specifier === "next/cache") return { revalidatePath: () => {} };
+      if (specifier === "next/navigation") return { redirect: (target) => { throw new Error(`REDIRECT:${target}`); } };
+      if (specifier === "react") return { cache: (fn) => fn };
       if (specifier === "@/lib/auth") return auth;
       if (specifier === "@/lib/supabase/server") return { createClient: () => options.db || { from: failCall } };
       if (specifier === "@/lib/supabase/service") return { createServiceClient: () => options.service || failCall() };
@@ -112,6 +120,18 @@ async function main() {
     assert.equal((await harness().load("lib/security/api.ts").authorizeApi()).ok, true);
     assert.equal((await harness({ authFails: true }).load("lib/security/api.ts").authorizeApi()).response.status, 503);
     assert.equal((await harness({ profile: { ...worker, store_id: null } }).load("lib/security/api.ts").authorizeApi()).response.status, 403);
+    assert.equal((await harness({ profile: { ...admin, store_id: store1 } }).load("lib/security/api.ts").authorizeApi()).response.status, 403);
+  });
+  await test("invalid profile bindings fail closed without cross-role fallback", () => {
+    const auth = harness().load("lib/auth.ts");
+    assert.equal(auth.isValidProfileBinding(admin), true);
+    assert.equal(auth.isValidProfileBinding(worker), true);
+    assert.equal(auth.isValidProfileBinding({ role: "store", store_id: null }), false);
+    assert.equal(auth.isValidProfileBinding({ role: "store", store_id: store1, stores: null }), false);
+    assert.equal(auth.isValidProfileBinding({ role: "store", store_id: store1, stores: { id: store2, name: "Radnja 2" } }), false);
+    assert.equal(auth.isValidProfileBinding({ role: "admin", store_id: store1 }), false);
+    assert.equal(auth.isValidProfileBinding({ role: "owner", store_id: store1 }), false);
+    assert.equal(auth.dashboardPathFor({ role: "store", store_id: null }), "/account-error");
   });
   await test("all admin API handlers reject anonymous and store roles before privileged work", async () => {
     let handlers = 0;
@@ -176,6 +196,28 @@ async function main() {
       assert.ok(db.calls.every((c) => c.verb === "select"));
     }
   });
+  await test("store binding is symmetric and client store_id tampering cannot change ownership", async () => {
+    const returns = harness().load("lib/return-proposals.ts");
+    assert.equal(returns.canViewReturnProposal(worker, { store_id: store1 }), true);
+    assert.equal(returns.canViewReturnProposal(worker, { store_id: store2 }), false);
+    assert.equal(returns.canViewReturnProposal(worker2, { store_id: store2 }), true);
+    assert.equal(returns.canViewReturnProposal(worker2, { store_id: store1 }), false);
+
+    for (const [profile, forgedStore, expectedStore] of [
+      [worker, store2, store1],
+      [worker2, store1, store2]
+    ]) {
+      const db = database((call) => ({ data: call.verb === "select" ? [] : { ...call.payload, id: objectId }, error: null }));
+      const form = new FormData();
+      form.set("store_id", forgedStore);
+      form.set("cash_revenue", "10");
+      const result = await harness({ db, profile }).load("app/store/actions.ts").submitDailyRevenue({}, form);
+      assert.equal(result.ok, true);
+      const payload = db.calls.find((call) => call.verb === "insert").payload;
+      assert.equal(payload.store_id, expectedStore);
+      assert.equal(payload.user_id, profile.id);
+    }
+  });
   await test("return creation ignores forged role/store/creator/status fields", async () => {
     const db = database((c) => ({ data: { ...c.payload, id: objectId }, error: null }));
     const response = await harness({ db }).load("app/api/return-proposals/route.ts").POST(request("POST", {
@@ -233,6 +275,10 @@ async function main() {
     assert.equal(validation.actionError(new validation.InputError("Validation"), "Safe error"), "Validation");
     assert.equal(date.isValidIsoDate("2026-02-30"), false);
     assert.equal(date.businessDateInBelgrade(0, new Date("2026-07-20T22:30:00Z")), "2026-07-21");
+    assert.equal(date.dateTimeKeyInBelgrade(new Date("2026-07-21T05:30:15Z")), "2026-07-21T07:30:15");
+    const tasks = h.load("lib/tasks.ts");
+    assert.equal(tasks.computeTaskStatus({ status: "pending", dueDate: "2026-07-21", dueTime: "07:00", now: new Date("2026-07-21T04:59:00Z") }), "pending");
+    assert.equal(tasks.computeTaskStatus({ status: "pending", dueDate: "2026-07-21", dueTime: "07:00", now: new Date("2026-07-21T05:01:00Z") }), "late");
   });
   await test("pagination, supplier snapshots and diagnostic redaction remain bounded", () => {
     const h = harness();
@@ -315,11 +361,16 @@ async function main() {
   await test("SOAP faults redact synthetic secrets; working namespace, empty password, sessions retained", async () => {
     const session = `{${objectId}}`, logs = [], requests = [];
     const optionalPasswordClient = harness({ env: {
+      BIZNISOFT_SOAP_URL: "https://soap.invalid",
       BIZNISOFT_COMPANY_ID: "1",
       BIZNISOFT_COMPANY_YEAR: "2026",
       BIZNISOFT_USERNAME: "EXAMPLE_USERNAME"
     } }).load("lib/biznisoft/soap-client.ts");
     assert.equal(optionalPasswordClient.getBizniSoftCredentials().password, "");
+    assert.throws(
+      () => harness({ env: { BIZNISOFT_COMPANY_ID: "1", BIZNISOFT_COMPANY_YEAR: "2026", BIZNISOFT_USERNAME: "EXAMPLE_USERNAME" } }).load("lib/biznisoft/soap-client.ts").getBizniSoftCredentials(),
+      /BIZNISOFT_SOAP_URL/
+    );
     const credentials = { soapUrl: "https://soap.invalid", companyId: "1", companyYear: "2026", username: "EXAMPLE_USERNAME", password: "" };
     const client = harness({ console: { log: (...a) => logs.push(a.join(" ")) }, fetch: async (_, init) => {
       requests.push(init);
@@ -333,6 +384,9 @@ async function main() {
     assert.ok(requests[1].body.includes(session));
     assert.ok(!logs.join(" ").includes(session));
     assert.ok(!logs.join(" ").includes(credentials.username));
+    const soapSource = read("lib/biznisoft/soap-client.ts");
+    assert.ok(!soapSource.includes("79.175.71.83"));
+    assert.ok(!soapSource.includes("console.log"));
     const fault = harness({ env: { BIZNISOFT_USERNAME: "EXAMPLE_USERNAME", BIZNISOFT_PASSWORD: "EXAMPLE_PASSWORD" } }).load("lib/biznisoft/soap-client.ts");
     let message = "";
     try { fault.extractSoapReturn(`<Fault><faultstring>EXAMPLE_USERNAME EXAMPLE_PASSWORD ${session} Bearer EXAMPLE_TOKEN</faultstring></Fault>`); }
@@ -427,6 +481,26 @@ async function main() {
     assert.ok(!/truncate|delete from|drop table/i.test(migration));
     console.log(`  ${tables.length} tables statically checked; deployed RLS still requires live verification`);
   });
+  await test("production accounts keep profile binding immutable and cleanup preserves master data", () => {
+    const initial = read("supabase/migrations/001_initial_schema.sql");
+    const allSql = filesIn("supabase/migrations").filter((file) => file.endsWith(".sql")).map(read).join("\n");
+    assert.match(initial, /profiles_admin_store_null[\s\S]*role = 'admin' and store_id is null[\s\S]*role = 'store' and store_id is not null/i);
+    assert.ok(!/create policy[\s\S]{0,160}on public\.profiles for (?:insert|update|delete)/i.test(allSql));
+
+    const cleanup = read("scripts/maintenance/production-clean-start.sql");
+    const executableCleanup = cleanup.replace(/--.*$/gm, "");
+    assert.ok(!/truncate|drop table|drop schema|delete from public\.(?:stores|profiles|produce_items|temperature_devices|biznisoft_articles|biznisoft_suppliers|article_suppliers)\s*[;\s]/i.test(executableCleanup));
+    for (const table of ["daily_revenue_reports", "temperature_reports", "store_tasks", "return_proposals"]) {
+      assert.match(cleanup, new RegExp(`delete from public\\.${table}`, "i"));
+    }
+
+    const accounts = read("scripts/create-production-accounts.mjs");
+    assert.match(accounts, /\[1, 2, 3, 4, 5, 6, 7, 8, 9, 11\]/);
+    assert.match(accounts, /radnja10/);
+    assert.match(accounts, /randomBytes/);
+    assert.match(accounts, /SUPABASE_SERVICE_ROLE_KEY/);
+    assert.ok(!/password:\s*["'][^"']+["']/.test(accounts));
+  });
   await test("client import graph cannot reach service-role/secret modules", () => {
     const sourceFiles = [...filesIn("app"), ...filesIn("components"), ...filesIn("lib")].filter((f) => /\.tsx?$/.test(f));
     function visit(file, seen = new Set()) {
@@ -467,6 +541,38 @@ async function main() {
     for (const source of [pazarAndTemperature, produce, tasks, returns, dialog]) {
       assert.ok(!/min-w-\[(?:[5-9]\d\d|\d{4,})px\]/.test(source));
     }
+  });
+  await test("production shelf workflow has no nonfunctional notification permission prompt", () => {
+    assert.equal(fs.existsSync(path.join(root, "app/store/kontrola-police/NotificationPermission.tsx")), false);
+    assert.ok(!read("app/store/kontrola-police/page.tsx").includes("NotificationPermission"));
+    assert.ok(read("app/api/cleanup-shelf-photos/route.ts").includes("businessDateInBelgrade(-30)"));
+  });
+  await test("Supabase SSR sessions persist, refresh atomically and clear only when invalid or signed out", async () => {
+    const browserClient = read("lib/supabase/client.ts");
+    const serverClient = read("lib/supabase/server.ts");
+    const cookieOptions = read("lib/supabase/cookie-options.ts");
+    const middleware = read("middleware.ts");
+    const logout = read("app/actions.ts");
+    const loginPage = read("app/login/page.tsx");
+    const authErrors = harness().load("lib/supabase/auth-errors.ts");
+
+    assert.match(browserClient, /autoRefreshToken:\s*true/);
+    assert.match(browserClient, /persistSession:\s*true/);
+    assert.ok(!cookieOptions.includes("maxAge"), "Supabase's persistent cookie lifetime must remain the source of truth");
+    assert.ok(serverClient.includes("getAll()") && serverClient.includes("setAll(cookiesToSet"));
+    assert.ok(middleware.includes("request.cookies.set(name, value)"));
+    assert.ok(middleware.includes("response.cookies.set(name, value, options)"));
+    assert.match(middleware, /source\.cookies\.getAll\(\)\.forEach[\s\S]*target\.cookies\.set\(cookie\)/);
+    assert.equal(authErrors.isSupabaseAuthCookieName("sb-example-auth-token.0"), true);
+    assert.equal(authErrors.isSupabaseAuthCookieName("sb-example-auth-token.1"), true);
+    assert.equal(authErrors.isConfirmedInvalidSessionError({ name: "AuthRetryableFetchError", status: 0 }), false);
+    assert.equal(authErrors.isConfirmedInvalidSessionError({ name: "AuthApiError", status: 429 }), false);
+    assert.equal(authErrors.isConfirmedInvalidSessionError({ name: "AuthApiError", status: 400, code: "refresh_token_not_found" }), true);
+    assert.ok(middleware.includes("copyResponseCookies(response, redirectResponse)"));
+    assert.ok(middleware.includes("maxAge: 0") && middleware.includes("isSupabaseAuthCookieName"));
+    assert.ok(logout.includes("supabase.auth.signOut()") && logout.includes("maxAge: 0"));
+    assert.match(loginPage, /if \(profile\) \{[\s\S]*redirect\(dashboardPathFor\(profile\)\)/);
+    assert.ok(serverClient.includes("cookies()") && !serverClient.includes("globalThis"));
   });
   await test("security headers and private API caching remain configured", async () => {
     const config = (await import(pathToFileURL(path.join(root, "next.config.mjs")))).default;

@@ -6,5 +6,11 @@ import { authCookieOptions } from "@/lib/supabase/cookie-options";
 
 export function createClient() {
   const { url, anonKey } = getSupabaseEnv();
-  return createBrowserClient(url, anonKey, { cookieOptions: authCookieOptions });
+  return createBrowserClient(url, anonKey, {
+    cookieOptions: authCookieOptions,
+    auth: {
+      autoRefreshToken: true,
+      persistSession: true
+    }
+  });
 }

@@ -1,7 +1,7 @@
 import "server-only";
 import { headers, type UnsafeUnwrappedHeaders } from "next/headers";
 import { NextResponse } from "next/server";
-import { getCurrentProfileWithClient } from "@/lib/auth";
+import { getCurrentProfileWithClient, isValidProfileBinding } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { isSameOriginRequest } from "@/lib/security/request";
 
@@ -13,8 +13,7 @@ export async function authorizeApi(supabase = createClient(), adminOnly = false)
   try {
     const profile = await getCurrentProfileWithClient(supabase);
     if (!profile) return jsonError("Unauthorized", 401);
-    if ((adminOnly && profile.role !== "admin") ||
-      (profile.role !== "admin" && (profile.role !== "store" || !profile.store_id))) {
+    if (!isValidProfileBinding(profile) || (adminOnly && profile.role !== "admin")) {
       return jsonError("Forbidden", 403);
     }
     const requestHeaders = headers() as unknown as UnsafeUnwrappedHeaders;

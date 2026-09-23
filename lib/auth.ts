@@ -72,7 +72,7 @@ export async function requireProfile() {
   const profile = await getCurrentProfile();
 
   if (!profile) {
-    redirect("/login");
+    redirect("/login?reason=account_invalid");
   }
 
   return profile;
@@ -80,6 +80,10 @@ export async function requireProfile() {
 
 export async function requireAdmin() {
   const profile = await requireProfile();
+
+  if (!isValidProfileBinding(profile)) {
+    redirect("/account-error");
+  }
 
   if (profile.role !== "admin") {
     redirect("/store");
@@ -91,7 +95,11 @@ export async function requireAdmin() {
 export async function requireStore() {
   const profile = await requireProfile();
 
-  if (profile.role !== "store" || !profile.store_id) {
+  if (!isValidProfileBinding(profile)) {
+    redirect("/account-error");
+  }
+
+  if (profile.role !== "store") {
     redirect("/admin");
   }
 
@@ -99,5 +107,21 @@ export async function requireStore() {
 }
 
 export function dashboardPathFor(profile: Profile) {
+  if (!isValidProfileBinding(profile)) return "/account-error";
   return profile.role === "admin" ? "/admin" : "/store";
+}
+
+export function isValidProfileBinding(
+  profile: Pick<Profile, "role" | "store_id" | "stores">
+) {
+  if (profile.role === "admin") return profile.store_id === null;
+  if (profile.role === "store") {
+    if (typeof profile.store_id !== "string" || profile.store_id.length === 0) {
+      return false;
+    }
+    if ("stores" in profile && profile.stores === null) return false;
+    if (profile.stores && profile.stores.id !== profile.store_id) return false;
+    return true;
+  }
+  return false;
 }

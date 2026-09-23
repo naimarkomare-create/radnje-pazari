@@ -25,6 +25,8 @@ export default async function LoginPage({
           initialMessage={
             searchParams?.reason === "session_expired"
               ? "Sesija je istekla. Prijavite se ponovo."
+              : searchParams?.reason === "account_invalid"
+                ? "Nalog nije pravilno podešen. Kontaktirajte administratora."
               : ""
           }
         />

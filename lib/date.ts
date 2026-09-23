@@ -13,6 +13,17 @@ const belgradeDateTimeFormatter = new Intl.DateTimeFormat("sr-RS", {
   timeZone: BELGRADE_TIME_ZONE
 });
 
+const belgradeDateTimePartsFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: BELGRADE_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23"
+});
+
 export function formatBelgradeDateTime(value: string) {
   return belgradeDateTimeFormatter.format(new Date(value));
 }
@@ -32,6 +43,24 @@ export function todayInBelgrade(now = new Date()) {
 
 export function businessDateInBelgrade(dayOffset = 0, now = new Date()) {
   return addDaysToIsoDate(todayInBelgrade(now), dayOffset);
+}
+
+export function dateTimeKeyInBelgrade(now = new Date()) {
+  const parts = belgradeDateTimePartsFormatter.formatToParts(now);
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value;
+  const year = value("year");
+  const month = value("month");
+  const day = value("day");
+  const hour = value("hour");
+  const minute = value("minute");
+  const second = value("second");
+
+  if (!year || !month || !day || !hour || !minute || !second) {
+    throw new Error("Nije moguće odrediti lokalno vreme.");
+  }
+
+  return `${year}-${month}-${day}T${hour}:${minute}:${second}`;
 }
 
 export function addDaysToIsoDate(value: string, dayOffset: number) {

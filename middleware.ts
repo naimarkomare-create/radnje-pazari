@@ -96,6 +96,7 @@ export const config = {
 function isProtectedPage(pathname: string) {
   return (
     pathname === "/" ||
+    pathname === "/account-error" ||
     pathname === "/admin" ||
     pathname.startsWith("/admin/") ||
     pathname === "/store" ||

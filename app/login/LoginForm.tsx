@@ -48,11 +48,14 @@ export function LoginForm({ initialMessage = "" }: { initialMessage?: string }) 
 
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select("role")
+        .select("role, store_id")
         .eq("id", user.id)
         .single();
 
       if (profileError) {
+        if (profileError.code === "PGRST116") {
+          await supabase.auth.signOut();
+        }
         setError(
           profileError.code === "PGRST116"
             ? "Nalog nema podešen profil. Proverite podešavanja u Supabase."
@@ -64,14 +67,30 @@ export function LoginForm({ initialMessage = "" }: { initialMessage?: string }) 
       }
 
       if (!profile) {
+        await supabase.auth.signOut();
         setError("Nalog nema podešen profil. Proverite podešavanja u Supabase.");
         setLoading(false);
         submittingRef.current = false;
         return;
       }
 
+      const destination =
+        profile.role === "admin" && profile.store_id === null
+          ? "/admin"
+          : profile.role === "store" && typeof profile.store_id === "string" && profile.store_id
+            ? "/store"
+            : null;
+
+      if (!destination) {
+        await supabase.auth.signOut();
+        setError("Nalog nije pravilno povezan sa radnjom. Kontaktirajte administratora.");
+        setLoading(false);
+        submittingRef.current = false;
+        return;
+      }
+
       setPassword("");
-      router.replace(profile.role === "admin" ? "/admin" : "/store");
+      router.replace(destination);
       router.refresh();
     } catch {
       setError("Prijava trenutno nije dostupna. Proverite vezu i pokušajte ponovo.");
