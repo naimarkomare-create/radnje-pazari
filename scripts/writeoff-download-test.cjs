@@ -15,7 +15,7 @@ const fixture = [1039, 1698, 9249, 15380].map((id, index) => ({
   id: `item-${id}`, writeoff_list_id: listId, store_id: storeId, supplier_id: supplierId,
   article_id: id, article_code: null, barcode: ["8606108042151", "8600103056380", "8600103056250", "8600103027175"][index],
   article_name: `Saved article ${id}`, quantity: quantities[index], stock_amount: 9999,
-  expiration_date: "2026-10-10", price: null, level_price: null, account: null,
+  expiration_date: "2026-10-10", price: [12.34, 56.78, 90.12, 34.56][index], level_price: null, account: null,
   popdv_id: null, vat_transaction_type: null, modify_time: null, operator_name: null
 }));
 const list = { id: listId, reference: "OT-TEST", status: "finalized", store_id: storeId, supplier_id: supplierId, stores: { name: "Radnja 1" } };
@@ -71,6 +71,13 @@ async function verifyResponse(response, rows) {
   const bytes = Buffer.from(await response.arrayBuffer());
   await workbook.xlsx.load(bytes);
   const sheet = workbook.getWorksheet("BSRep_411717");
+  const original = new ExcelJS.Workbook();
+  await original.xlsx.readFile(path.join(root, "public/templates/excel/biznisoft-otpis-import.xlsx"));
+  const template = original.getWorksheet("BSRep_411717");
+  assert.equal(sheet.columnCount, 20);
+  assert.deepEqual(sheet.getRow(1).values, template.getRow(1).values);
+  assert(sheet.model.merges.includes("A1:B1"));
+  assert(sheet.model.merges.includes(`A${sheet.rowCount}:B${sheet.rowCount}`));
   const expected = new Map();
   for (const row of rows) {
     const code = row.article_code?.trim() || String(row.article_id).padStart(6, "0");
@@ -86,6 +93,14 @@ async function verifyResponse(response, rows) {
     assert.equal(sheet.getCell(`E${index}`).value, row.article_name);
     assert.equal(sheet.getCell(`F${index}`).type, ExcelJS.ValueType.Number);
     assert.equal(sheet.getCell(`F${index}`).value, row.quantity);
+    assert.equal(sheet.getCell(`G${index}`).type, ExcelJS.ValueType.Number);
+    assert.equal(sheet.getCell(`G${index}`).value, Number(row.price));
+    assert.equal(sheet.getCell(`L${index}`).type, ExcelJS.ValueType.Number);
+    assert.equal(sheet.getCell(`L${index}`).value, row.quantity * Number(row.price));
+    for (const column of ["F", "G", "L", "N"]) {
+      assert.equal(sheet.getCell(`${column}${index}`).numFmt, template.getCell(`${column}2`).numFmt);
+      assert.deepEqual(sheet.getCell(`${column}${index}`).style, template.getCell(`${column}2`).style);
+    }
     for (const [column, field] of [["G", "price"], ["M", "account"], ["N", "level_price"], ["Q", "popdv_id"], ["R", "vat_transaction_type"]]) {
       if (row[field] == null) assert.equal(sheet.getCell(`${column}${index}`).value, null);
     }
@@ -93,6 +108,8 @@ async function verifyResponse(response, rows) {
   }
   assert.equal(expected.size, 0, "No missing articles");
   assert.equal(sheet.getCell(`F${sheet.rowCount}`).value, rows.reduce((sum, row) => sum + Number(row.quantity), 0));
+  const sourceTotalValue = rows.reduce((sum, row) => sum + Number(row.quantity) * Number(row.price), 0);
+  assert(Math.abs(sheet.getCell(`L${sheet.rowCount}`).value - sourceTotalValue) < 1e-9, "Document value reconciles with source rows, allowing only binary floating-point noise");
   return bytes;
 }
 
@@ -110,13 +127,31 @@ async function main() {
   const test = harness();
   const bytes = await verifyResponse(await test.invoke(), fixture);
   await verifyResponse(await harness().invoke("?mode=test"), fixture);
-  for (const call of test.calls) assert.deepEqual(call.filters[0], [call.table === "writeoff_lists" ? "id" : "writeoff_list_id", listId]);
+  for (const call of test.calls) {
+    assert(["writeoff_lists", "writeoff_list_items"].includes(call.table), "Export reads immutable saved prices, not today's catalog or another store");
+    assert.deepEqual(call.filters[0], [call.table === "writeoff_lists" ? "id" : "writeoff_list_id", listId]);
+  }
   const { verifyBizniSoftTestExport } = test.load("lib/popis-otpis-export.ts");
-  const tampered = new ExcelJS.Workbook();
-  await tampered.xlsx.load(bytes);
-  tampered.getWorksheet("BSRep_411717").getCell("F2").value = 0;
-  const tamperedBytes = Buffer.from(await tampered.xlsx.writeBuffer());
-  await assert.rejects(() => verifyBizniSoftTestExport(tamperedBytes, fixture), /Provera artikala i količina/);
+  for (const [cell, value] of [["F2", 0], ["G2", null], ["G2", "12.34"], ["G2", 99], ["L2", 0], ["N2", 10], ["L6", 0], ["G1", "Wrong header"]]) {
+    const tampered = new ExcelJS.Workbook();
+    await tampered.xlsx.load(bytes);
+    tampered.getWorksheet("BSRep_411717").getCell(cell).value = value;
+    const tamperedBytes = Buffer.from(await tampered.xlsx.writeBuffer());
+    await assert.rejects(() => verifyBizniSoftTestExport(tamperedBytes, fixture), /Provera artikala, količina i cena/);
+  }
+  for (const price of [null, undefined, "", " ", NaN, Infinity, -1, false]) {
+    const missing = await harness({ items: [{ ...fixture[0], price }] }).invoke();
+    assert.equal(missing.status, 422);
+    assert.equal(missing.headers.get("Content-Disposition"), null);
+    const error = await missing.json();
+    assert.equal(error.code, "PRICE_UNAVAILABLE");
+    assert.match(error.error, /1039/);
+    assert(!/Niv.cena|Konto|POPDV/.test(error.error));
+  }
+  await verifyResponse(await harness({ items: [{ ...fixture[0], price: 0, level_price: 7.25 }] }).invoke(), [{ ...fixture[0], price: 0, level_price: 7.25 }]);
+  const conflict = await harness({ items: [fixture[0], { ...fixture[0], id: "different-price", price: 99 }] }).invoke();
+  assert.equal(conflict.status, 422);
+  assert.match((await conflict.json()).error, /različite sačuvane cene/);
   assert.equal((await harness({ items: [] }).invoke()).status, 422);
   assert.equal((await harness({ items: [{ ...fixture[0], quantity: 0 }] }).invoke()).status, 422);
   assert.equal((await harness({ items: [{ ...fixture[0], store_id: supplierId }] }).invoke()).status, 422);
@@ -125,7 +160,7 @@ async function main() {
   assert.match((await missingBarcode.json()).error, /identitet/);
   const split = [fixture[0], { ...fixture[0], id: "another-expiry", expiration_date: "2026-10-15", quantity: 2.5 }];
   await verifyResponse(await harness({ items: split }).invoke(), split);
-  console.log("PASS actual GET download handler: admin-only, finalized-only, one-click controlled download, strict production 422, XLSX attachment, 13/22/14/101 = 150, blanks and reconciliation failure.");
+  console.log("PASS actual GET download handler: admin-only, finalized-only, one-click download, strict production 422, saved snapshots unchanged, 13/22/14/101 = 150, numeric prices/values/totals, exact template headers/styles, optional metadata blanks, missing/conflicting prices blocked, tampering rejected.");
   if (process.argv.includes("--live-read")) {
     require("@next/env").loadEnvConfig(root);
     const { createClient } = require("@supabase/supabase-js");

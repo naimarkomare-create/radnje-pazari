@@ -14,12 +14,35 @@ import {
   type ImportableWriteoffItem
 } from "@/lib/popis-otpis";
 
+export function validateBizniSoftWriteoffPrices(items: ImportableWriteoffItem[]) {
+  const ids = [...new Set(items.filter((item) => {
+    const value: unknown = item.price;
+    if (typeof value !== "number" && typeof value !== "string") return true;
+    if (typeof value === "string" && !value.trim()) return true;
+    const price = numericValue(value);
+    return price === null || price < 0;
+  }).map((item) => item.article_id))];
+  if (!ids.length) return null;
+  const extra = ids.length > 5 ? ` i još ${ids.length - 5}` : "";
+  return `Nedostaje ispravna sačuvana cena za artikle: ${ids.slice(0, 5).join(", ")}${extra}. Izvoz je blokiran; proverite cene za radnju ovog popisa.`;
+}
+
 export async function buildBizniSoftWriteoffWorkbook(items: ImportableWriteoffItem[], options: { testOnly?: boolean } = {}) {
   const preparedItems = items.map((item) => ({
     ...item,
     article_code: item.article_code?.trim() || formatBizniSoftArticleCode(item.article_id)
   }));
+  const priceError = validateBizniSoftWriteoffPrices(preparedItems);
+  if (priceError) throw new Error(priceError);
   const errors = validateWriteoffItems(preparedItems, { requireBizniSoftMetadata: !options.testOnly });
+  const prices = new Map<number, number>();
+  for (const item of preparedItems) {
+    const price = numericValue(item.price)!;
+    if (prices.has(item.article_id) && prices.get(item.article_id) !== price) {
+      errors.push(`Artikal ${item.article_id} ima različite sačuvane cene. Izvoz je blokiran; proverite stavke popisa.`);
+    }
+    prices.set(item.article_id, price);
+  }
   if (options.testOnly) {
     for (const item of preparedItems) {
       if (!Number.isInteger(item.article_id) || item.article_id <= 0 || !item.article_code) {
@@ -141,21 +164,39 @@ export async function verifyBizniSoftTestExport(buffer: Buffer, items: Importabl
   await workbook.xlsx.load(buffer as unknown as Parameters<typeof workbook.xlsx.load>[0]);
   const sheet = workbook.getWorksheet(WRITE_OFF_IMPORT_SHEET);
   const expected = aggregateItemsByArticle(items);
-  const fail = () => { throw new Error("Provera artikala i količina nije uspela. Probni XLSX nije preuzet."); };
+  const fail = () => { throw new Error("Provera artikala, količina i cena nije uspela. XLSX nije preuzet."); };
   if (!sheet || workbook.worksheets.length !== 1 || sheet.columnCount !== 20 || sheet.rowCount !== expected.length + 2) return fail();
+  const template = await loadWriteoffTemplate();
+  const original = template.getWorksheet(WRITE_OFF_IMPORT_SHEET);
+  if (!original || validateBizniSoftWriteoffPrices(items)) return fail();
+  for (let column = 1; column <= WRITE_OFF_IMPORT_COLUMNS; column += 1) {
+    if (sheet.getCell(1, column).value !== original.getCell(1, column).value) return fail();
+  }
   let total = 0;
+  let totalValue = 0;
   for (const [index, item] of expected.entries()) {
     const row = sheet.getRow(index + 2);
     const code = item.article_code?.trim() || formatBizniSoftArticleCode(item.article_id);
+    const price = numericValue(item.price)!;
+    const value = Number(item.quantity) * price;
+    const levelPrice = numericValue(item.level_price);
     if (row.getCell(3).type !== ExcelJS.ValueType.String || row.getCell(3).value !== item.barcode ||
         row.getCell(4).type !== ExcelJS.ValueType.String || row.getCell(4).value !== code ||
         row.getCell(5).value !== item.article_name || row.getCell(6).type !== ExcelJS.ValueType.Number ||
-        row.getCell(6).value !== Number(item.quantity)) return fail();
+        row.getCell(6).value !== Number(item.quantity) || row.getCell(7).type !== ExcelJS.ValueType.Number ||
+        row.getCell(7).value !== price || row.getCell(12).type !== ExcelJS.ValueType.Number ||
+        row.getCell(12).value !== value || row.getCell(14).value !== levelPrice ||
+        (levelPrice !== null && row.getCell(14).type !== ExcelJS.ValueType.Number)) return fail();
+    for (const column of [6, 7, 12, 14]) {
+      if (row.getCell(column).numFmt !== original.getCell(2, column).numFmt) return fail();
+    }
     total += Number(item.quantity);
+    totalValue += value;
   }
   const footer = sheet.getRow(expected.length + 2);
   if (footer.getCell(1).value !== expected.length || footer.getCell(5).value !== "UKUPNO ZA DOKUMENT:" ||
-      footer.getCell(6).type !== ExcelJS.ValueType.Number || footer.getCell(6).value !== total) return fail();
+      footer.getCell(6).type !== ExcelJS.ValueType.Number || footer.getCell(6).value !== total ||
+      footer.getCell(12).type !== ExcelJS.ValueType.Number || footer.getCell(12).value !== totalValue) return fail();
 }
 
 function setRowValues(row: ExcelJS.Row, values: unknown[]) {

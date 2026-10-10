@@ -128,7 +128,21 @@ async function main() {
   }), { params: Promise.resolve({ id: store1 }) });
   assert.equal(forged.status, 409, "A different article ID cannot borrow a verified barcode");
   const stale = harness({ stock: [{ ...old }] });
-  assert.equal((await stale.load("lib/biznisoft/writeoff-lookup.ts").lookupWriteoffArticles(1, barcode))[0].stock_amount, null);
+  const staleResult = (await stale.load("lib/biznisoft/writeoff-lookup.ts").lookupWriteoffArticles(1, barcode))[0];
+  assert.equal(staleResult.stock_amount, null);
+  assert.equal(staleResult.price, 100, "Age alone must not erase a verified selected-store RetailPrice");
+  assert.equal(staleResult.price_checked_at, old.last_seen_at);
+  assert.equal(staleResult.price_source, "cache");
+  assert.match(staleResult.price_message, /poslednje sinhronizacije/);
+  assert.equal(stale.priceCalls.length, 0, "Existing store prices work even when live SOAP is unavailable");
+  const staleSave = await stale.load("app/api/admin/popis-otpis/[id]/items/route.ts").POST(new NextRequest(
+    "http://localhost/api/admin/popis-otpis/" + store1 + "/items", { method: "POST",
+      body: JSON.stringify({ article_id: 1698, barcode, price: 1, supplier_id: supplierId, client_entry_id: store2, quantity: 13, expiration_date: "2027-01-05" })
+    }), { params: Promise.resolve({ id: store1 }) });
+  assert.equal(staleSave.status, 201);
+  assert.equal((await staleSave.json()).item.price, 100, "Save preserves the authoritative cache price instead of a null/client price");
+  const bothStores = harness({ stock: [{ ...old }, { ...old, storage_key: "2", storage_id: 2, retail_price: 777 }] });
+  assert.equal((await bothStores.load("lib/biznisoft/writeoff-lookup.ts").lookupWriteoffArticles(2, barcode))[0].price, 777);
   const fresh = harness({ stock: [{ ...old, amount: 0, retail_price: 0, last_seen_at: new Date().toISOString() }] });
   const freshResult = (await fresh.load("lib/biznisoft/writeoff-lookup.ts").lookupWriteoffArticles(1, barcode))[0];
   assert.equal(freshResult.stock_amount, null, "Write-off does not collect stock quantities");
@@ -150,9 +164,9 @@ async function main() {
     (request) => ({ ...request, PriceWithVat: null }),
     (request) => ({ ...request, PriceWithVat: -1 })
   ]) {
-    const invalid = harness({ stock: [{ ...old }], livePrice: badPrice });
+    const invalid = harness({ stock: [], livePrice: badPrice });
     const invalidResult = (await invalid.load("lib/biznisoft/writeoff-lookup.ts").lookupWriteoffArticles(1, barcode))[0];
-    assert.equal(invalidResult.price, null, "Never use another store/date/article price, negative price, or stale fallback");
+    assert.equal(invalidResult.price, null, "Never use another store/date/article price or negative price");
     assert.equal(invalidResult.price_source, "unavailable");
   }
   const alias = harness({ stock: [], articles: [{ article_id: 1698, article_code: "001698", name: "Known alias", barcode: "different-primary", unit: "KOM", raw: { _barcodeSpec: { ArticleID: 1698, Barcode: barcode } } }] });
@@ -200,6 +214,6 @@ async function main() {
   assert(!/StockRefreshControl|Trenutno stanje|stock_amount/.test(component));
   assert.match(component, /Cena za/);
   assert.match(component, /refreshSelectedPrice/);
-  console.log("PASS write-off lookup: catalog without stock, exact barcodes/collisions, selected-store live prices, fresh cache, stale/wrong-price rejection, admin API, authoritative saved price, manual quantity, no sync writes.");
+  console.log("PASS write-off lookup: catalog without stock, exact barcodes/collisions, selected-store prices, cached price preservation with freshness warning, invalid live price rejection, admin API, authoritative saved price, manual quantity, no sync writes.");
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });

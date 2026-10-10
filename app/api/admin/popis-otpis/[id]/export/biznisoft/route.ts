@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeApi } from "@/lib/security/api";
-import { buildBizniSoftWriteoffWorkbook, buildVerifiedBizniSoftTestExport } from "@/lib/popis-otpis-export";
+import { buildBizniSoftWriteoffWorkbook, buildVerifiedBizniSoftTestExport, validateBizniSoftWriteoffPrices } from "@/lib/popis-otpis-export";
 import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
 import { excelDownloadResponse } from "@/lib/excel-templates";
@@ -34,6 +34,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (items.some((item) => item.store_id !== listResult.data.store_id || item.supplier_id !== listResult.data.supplier_id)) {
       return NextResponse.json({ error: "Sačuvane stavke nisu usaglašene sa radnjom i dobavljačem." }, { status: 422 });
     }
+    const priceError = validateBizniSoftWriteoffPrices(items);
+    if (priceError) return NextResponse.json({ error: priceError, code: "PRICE_UNAVAILABLE" }, { status: 422 });
     if (testOnly) {
       const buffer = await buildVerifiedBizniSoftTestExport(items);
       const name = `PROBNI-biznisoft-otpis-${String(listResult.data.reference).replace(/[^a-zA-Z0-9_-]/g, "-")}.xlsx`;

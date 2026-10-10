@@ -57,13 +57,14 @@ export async function lookupWriteoffArticles(storageId: number, barcode: string,
     const cachedPrice = numericValue(stored?.retail_price);
     const fresh = Boolean(stored?.last_seen_at) && stored !== undefined && !stockIsStale(stored.last_seen_at, threshold) &&
       todayInBelgrade(new Date(stored.last_seen_at)) === todayInBelgrade();
-    const price = fresh && cachedPrice !== null && cachedPrice >= 0 ? cachedPrice : null;
+    // Freshness is a warning, not permission to erase a verified selected-store price.
+    const price = cachedPrice !== null && cachedPrice >= 0 ? cachedPrice : null;
     return [{ article_id: id, article_code: textValue(cached?.article_code) ?? textValue(readRawField(raw, ["Code", "ArticleCode", "CatNo", "ArticleCatNo"])) ?? formatBizniSoftArticleCode(id),
       article_name: name, name, barcode, unit: stored?.unit ?? cached?.unit ?? null,
       stock_amount: null, stock_fetched_at: null,
       price, price_checked_at: price === null ? null : stored?.last_seen_at ?? null,
       price_source: price === null ? "selection_required" : "cache",
-      price_message: null as string | null,
+      price_message: price !== null && !fresh ? "Cena je iz poslednje sinhronizacije izabrane radnje. Proverite je pre otpisa." : null as string | null,
       account: textValue(readRawField(raw, ["Account", "Konto"])),
       level_price: numericValue(readRawField(raw, ["LevelPrice", "NivCena", "NivPrice"])),
       popdv_id: textValue(readRawField(raw, ["POPDVID", "POPDVId", "POPDV_ID", "PdvId"])),
