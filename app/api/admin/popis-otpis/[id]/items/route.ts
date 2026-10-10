@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeApi } from "@/lib/security/api";
-import { formatBizniSoftArticleCode, isIsoDate, isUuid, numericValue, readRawField, textValue } from "@/lib/popis-otpis";
+import { isIsoDate, isUuid, numericValue } from "@/lib/popis-otpis";
+import { lookupWriteoffArticles } from "@/lib/biznisoft/writeoff-lookup";
 import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authorization = await authorizeApi(createClient(), true);
@@ -29,40 +31,34 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (listResult.data.supplier_id !== supplierId) return NextResponse.json({ error: "Izabrani dobavljač ne odgovara popisu." }, { status: 400 });
     const store = Array.isArray(listResult.data.stores) ? listResult.data.stores[0] : listResult.data.stores;
     const storageId = store?.biznisoft_storage_id;
-    if (!Number.isInteger(storageId)) return NextResponse.json({ error: "Nije podešen BizniSoft StorageID za ovu radnju." }, { status: 409 });
+    if (!Number.isInteger(storageId) || storageId <= 0) return NextResponse.json({ error: "Nije podešen BizniSoft StorageID za ovu radnju." }, { status: 409 });
 
-    const stockResult = await supabase.from("biznisoft_stock_price_current").select("storage_id, article_id, name, barcode, unit, amount, retail_price, last_seen_at, raw").eq("storage_key", String(storageId)).eq("article_id", articleId).limit(3);
-    if (stockResult.error) throw stockResult.error;
     const barcode = typeof body.barcode === "string" ? body.barcode.trim() : "";
-    const stock = (stockResult.data ?? []).find((row) => row.barcode === barcode) ?? null;
-    if (!stock) return NextResponse.json({ error: "Artikal nije potvrđen u stanju izabrane radnje." }, { status: 409 });
-    const articleCache = await supabase.from("biznisoft_articles").select("article_code, raw").eq("article_id", articleId).maybeSingle();
-    if (articleCache.error) throw articleCache.error;
-    const stockRaw = (stock.raw ?? {}) as Record<string, unknown>;
-    const articleRaw = (articleCache.data?.raw ?? {}) as Record<string, unknown>;
-    const mergedRaw = { ...articleRaw, ...stockRaw };
+    if (!barcode || barcode.length > 80) return NextResponse.json({ error: "Barkod nije ispravan." }, { status: 400 });
+    const stock = (await lookupWriteoffArticles(storageId, barcode, { articleId })).find((row) => row.article_id === articleId);
+    if (!stock) return NextResponse.json({ error: "Identitet artikla i barkod nisu potvrđeni u katalogu." }, { status: 409 });
     const item = {
-      account: textValue(readRawField(mergedRaw, ["Account", "Konto"])),
-      article_code: textValue(articleCache.data?.article_code) ?? textValue(readRawField(mergedRaw, ["Code", "ArticleCode", "CatNo", "ArticleCatNo"])) ?? formatBizniSoftArticleCode(articleId),
+      account: stock.account,
+      article_code: stock.article_code,
       article_id: articleId,
-      article_name: stock.name ?? `Nepoznat artikal (ID: ${articleId})`,
+      article_name: stock.article_name,
       barcode: stock.barcode,
       client_entry_id: clientEntryId,
       created_by: authorization.profile.id,
       expiration_date: expirationDate,
-      level_price: numericValue(readRawField(mergedRaw, ["LevelPrice", "NivCena", "NivPrice"])),
-      modify_time: textValue(readRawField(mergedRaw, ["ModifyTime", "ModificationTime"])),
-      operator_name: textValue(readRawField(mergedRaw, ["Operater", "Operator"])),
-      popdv_id: textValue(readRawField(mergedRaw, ["POPDVID", "POPDVId", "POPDV_ID", "PdvId"])),
-      price: stock.retail_price,
+      level_price: stock.level_price,
+      modify_time: stock.modify_time,
+      operator_name: stock.operator_name,
+      popdv_id: stock.popdv_id,
+      price: stock.price,
       quantity,
-      stock_amount: stock.amount,
-      stock_fetched_at: stock.last_seen_at,
+      stock_amount: stock.stock_amount,
+      stock_fetched_at: stock.stock_fetched_at,
       supplier_id: supplierId,
       supplier_name: listResult.data.supplier_name,
       store_id: listResult.data.store_id,
       unit: stock.unit,
-      vat_transaction_type: textValue(readRawField(mergedRaw, ["VATTransactionType", "VatTransactionType", "TaxTransactionType", "VrstaPDVPrometa"])),
+      vat_transaction_type: stock.vat_transaction_type,
       writeoff_list_id: id
     };
     const result = await supabase.from("writeoff_list_items").insert(item).select("id, writeoff_list_id, client_entry_id, store_id, supplier_id, article_id, article_code, barcode, article_name, unit, quantity, expiration_date, stock_amount, stock_fetched_at, price, level_price, account, popdv_id, vat_transaction_type, operator_name, modify_time, supplier_name, created_by, created_at, updated_at").single();

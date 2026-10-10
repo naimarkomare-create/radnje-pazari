@@ -48,7 +48,7 @@ function harness() {
     vm.runInNewContext(code, {
       module, exports: module.exports, require: localRequire, Date, Intl, console, setTimeout, clearTimeout, AbortController, DOMException, crypto: require("node:crypto").webcrypto,
       fetch: async (...args) => { requests.push(args); return fetchResponse; },
-      window: { setTimeout }, document: { getElementById: () => null }
+      window: { setTimeout, clearTimeout, setInterval, clearInterval }, document: { getElementById: () => null }
     }, { filename: file });
     return module.exports;
   }
@@ -170,6 +170,33 @@ async function main() {
   draft.response({ ok: true, json: async () => ({ item: { id: "saved", quantity: 13, expiration_date: "2026-10-13" } }) });
   await nodes(tree).find((node) => node.type === "button" && node.props.children === "Sačuvaj").props.onClick();
   assert.equal(JSON.parse(draft.requests[2][1].body).expiration_date, "2026-10-13", "Edit payload never interprets 13 as month");
+
+  const collision = harness();
+  const CollisionEditor = collision.load("components/popis-otpis/PopisOtpisEditor.tsx").PopisOtpisEditor;
+  tree = collision.render(CollisionEditor, draftProps);
+  nodes(tree).find((node) => node.type === "input" && node.props.enterKeyHint === "search").props.onChange({ target: { value: "0001039" } });
+  tree = collision.render(CollisionEditor, draftProps);
+  const candidate = { article_id: 1039, article_code: "001039", barcode: "0001039", article_name: "First article", price: null, price_source: "selection_required", price_checked_at: null };
+  collision.response({ ok: true, json: async () => ({ candidates: [candidate, { ...candidate, article_id: 1698, article_name: "Second article" }] }) });
+  await nodes(tree).find((node) => node.type === "form").props.onSubmit({ preventDefault() {} });
+  tree = collision.render(CollisionEditor, draftProps);
+  let resolvePrice;
+  collision.response({ ok: true, json: () => new Promise((resolve) => { resolvePrice = resolve; }) });
+  nodes(tree).find((node) => node.type === "button" && nodes(node).some((child) => child.type === "strong" && child.props.children === "First article")).props.onClick();
+  await tick();
+  tree = collision.render(CollisionEditor, draftProps);
+  assert(nodes(tree).find((node) => node.type === "button" && node.props.children === "Potvrdi stavku").props.disabled, "Wait for the selected article price lookup before saving");
+  assert.match(collision.requests[1][0], /article_id=1039/);
+  resolvePrice({ candidates: [{ ...candidate, price: 47.99, price_source: "live", price_checked_at: "2026-10-10T12:00:00Z" }] });
+  await tick();
+  tree = collision.render(CollisionEditor, draftProps);
+  assert.equal(nodes(tree).find((node) => node.type === "button" && node.props.children === "Potvrdi stavku").props.disabled, false);
+  assert(nodes(tree).some((node) => node.type === "p" && JSON.stringify(node.props.children).includes("47,99")), "Current price uses Serbian decimals");
+  nodes(tree).find((node) => node.props["aria-label"] === "Poništi artikal").props.onClick();
+  tree = collision.render(CollisionEditor, draftProps);
+  assert(!nodes(tree).some((node) => node.props.id === "writeoff-quantity"), "Cancel restores the scan workflow");
+
+  assert.doesNotMatch(fs.readFileSync(path.join(root, "components/popis-otpis/PopisOtpisEditor.tsx"), "utf8"), /StockRefreshControl|Trenutno stanje|stock_amount|Osveži stanje/);
   console.log("PASS writeoff UI/date regression: one-click download, no consent, double-click lock, error recovery, DD/MM/YY input/calendar/review/edit, leap years, invalid dates, four timezones.");
 }
 

@@ -270,9 +270,21 @@ public/templates/excel/biznisoft-otpis-import.xlsx
 
 Šablon mora biti originalni fajl koji je već uspešno uvezen u BizniSoft. Aplikacija iz njega pravi samo pripremni XLSX; ne poziva BizniSoft write metode, ne kreira dokument i ne knjiži otpis.
 
-Za pretragu artikala radnja mora imati podešen `stores.biznisoft_storage_id`, a lokalna `biznisoft_stock_price_current` sinhronizacija mora sadržati stanje, barkod, naziv i cenu. BizniSoft `ID` se koristi kao autoritativna interna šifra i u XLSX-u se čuva kao tekst od šest cifara, pa vodeće nule ostaju sačuvane.
+Za pretragu artikala radnja mora imati eksplicitno podešen `stores.biznisoft_storage_id`. Identitet se traži po tačnom barkodu u `biznisoft_articles`, uključujući već verifikovane `itBarcodespec` veze. Postojeći zapis izabranog objekta u `biznisoft_stock_price_current` može biti dopunski katalog/cena, ali postojanje artikla u toj tabeli nije uslov za skeniranje. Dobavljač ne ograničava katalog. Interna šifra čuva postojeću verifikovanu BizniSoft konvenciju; vodeće nule u barkodu i kodu ostaju tekst.
 
-Cena se uzima samo iz sinhronizovanog BizniSoft `RetailPrice` podatka. Konto, POPDV ID, vrsta PDV prometa i Niv.cena uzimaju se samo ako postoje u autoritativnom zapisu. Ako neko od tih polja nedostaje, BizniSoft izvoz se namerno blokira umesto da koristi vrednosti iz primera šablona ili pretpostavljene vrednosti. Finalizacija nacrta i dobavljački izvoz ne zavise od tih računovodstvenih polja, pa se sačuvani popis može proveriti i preuzeti za dobavljača bez gubitka stavki.
+### Identitet i cena artikla za popis otpisa
+
+Popis ne prikazuje niti preuzima stock količinu i nema dugme za masovno stock osvežavanje. Admin ručno unosi količinu za otpis i rok; postojeći skener, podaci i XLSX formati se ne menjaju.
+
+Za cenu se prvo koristi postojeći sinhronizovani `RetailPrice` samo iz izabranog StorageID-a, proveren danas u `Europe/Belgrade` i ne stariji od 30 minuta. Opcioni server-only `BIZNISOFT_STOCK_FRESHNESS_MINUTES` menja taj prag; nikakve environment vrednosti nisu menjane. Ako takva cena ne postoji, postojeći SOAP klijent poziva samo `GetSessionHandle` i `GetItem` za `qtArticlePriceForPOS` sa `StorageID`, današnjim `Date` i potvrđenim `ArticleID`. Koristi se `PriceWithVat` samo kada odgovor potvrđuje isti objekat, artikal i datum. Pri više artikala za isti barkod prvo se traži eksplicitan izbor, tek zatim cena izabranog artikla.
+
+Cena i vreme provere prikazuju se u Srbiji, uz izvor BizniSoft/sinhronizovani cenovnik. Zastarela, negativna, neispravna ili cena druge radnje se ne koristi. Ako live lookup ne uspe, identitet ostaje dostupan, a cena je prazna uz `Artikal je pronađen. Aktuelna cena za izabranu radnju nije dostupna.` Dugme `Proveri cenu ponovo` ponavlja samo pojedinačni lookup. Cena se ponovo proverava server-side pri potvrdi stavke; client-supplied cena se ne prihvata. Stock snapshot polja novih stavki ostaju null; istorijski zapisi se ne menjaju.
+
+Nema novog cron-a, stock migracije, cache upisa ili masovne sinhronizacije za popis. Postojeći globalni price-sync i dnevni cron sa cleanup-om povrata ostaju nepromenjeni. Ne pozivaju se BizniSoft write metode. Cena koja nije poznata ne postaje nula; kontrolisani XLSX ostavlja prazno polje, a odvojeni strogi produkcijski izvoz zadržava proveru obaveznih računovodstvenih vrednosti.
+
+`npm run test:writeoff-lookup` proverava ovaj tok sa simuliranim SOAP/DB odgovorima; ne poziva produkciju. Stvaran `qtArticlePriceForPOS` odgovor i konekciju treba potvrditi odobrenim ručnim testom pre oslanjanja na live cenu.
+
+Cena se uzima samo iz gore opisanog autoritativnog izvora za izabranu radnju. Konto, POPDV ID, vrsta PDV prometa i Niv.cena uzimaju se samo ako postoje u autoritativnom zapisu. Ako neko od tih polja nedostaje, odvojeni strogi produkcijski BizniSoft izvoz se blokira umesto da koristi vrednosti iz primera šablona ili pretpostavljene vrednosti. Kontrolisani izvoz, finalizacija nacrta i dobavljački izvoz ostaju nezavisni od nedostajućih računovodstvenih polja.
 
 Tok rada:
 
@@ -311,7 +323,7 @@ Server pre slanja ponovo otvara baš bajtove koji će biti preuzeti i proverava 
 
 ## Vercel Cron
 
-`vercel.json` pokreće postojeću sinhronizaciju cena i cleanup starih nacrta povrata jednom dnevno u 05:00 UTC:
+`vercel.json` pokreće postojeću sinhronizaciju cena i cleanup starih nacrta povrata jednom dnevno u 05:00 UTC. To je 07:00 leti i 06:00 zimi u Srbiji. Raspored je UTC i nema automatskog DST pomeranja; postojeći cron nije menjan za pojedinačni lookup u popisu:
 
 ```json
 {

@@ -6,6 +6,7 @@ import type { WriteoffList, WriteoffListItem } from "@/lib/types";
 import { WriteoffExportButtons } from "@/components/popis-otpis/WriteoffExportButtons";
 import { ExpirationDateInput } from "@/components/popis-otpis/ExpirationDateInput";
 import { formatWriteoffDate, parseWriteoffDate } from "@/lib/writeoff-date";
+import { formatStockTimestamp } from "@/lib/stock-freshness";
 
 type Candidate = {
   article_id: number;
@@ -13,9 +14,10 @@ type Candidate = {
   article_name: string;
   barcode: string;
   unit: string | null;
-  stock_amount: number | null;
-  stock_fetched_at: string;
   price: number | null;
+  price_checked_at: string | null;
+  price_source: string;
+  price_message: string | null;
   suppliers: Array<{ id: string; name: string; is_primary: boolean }>;
 };
 
@@ -30,6 +32,7 @@ export function PopisOtpisEditor({ list: initialList, initialItems }: { list: Wr
   const [expirationDate, setExpirationDate] = useState("");
   const [lookupBusy, setLookupBusy] = useState(false);
   const [saveBusy, setSaveBusy] = useState(false);
+  const [priceBusy, setPriceBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [manualEntry, setManualEntry] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -40,10 +43,11 @@ export function PopisOtpisEditor({ list: initialList, initialItems }: { list: Wr
   const lookupRequestRef = useRef(0);
   const saveLockRef = useRef(false);
   const clientEntryIdRef = useRef<string | null>(null);
+  const priceAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     focusBarcodeInput();
-    return () => lookupAbortRef.current?.abort();
+    return () => { lookupAbortRef.current?.abort(); priceAbortRef.current?.abort(); };
   }, []);
 
   async function lookup(event?: React.FormEvent) {
@@ -85,11 +89,31 @@ export function PopisOtpisEditor({ list: initialList, initialItems }: { list: Wr
     setQuantity("");
     setExpirationDate("");
     setTimeout(() => document.getElementById("writeoff-quantity")?.focus(), 0);
+    if (candidate.price_source === "selection_required") void refreshSelectedPrice(candidate);
+  }
+
+  async function refreshSelectedPrice(article: Candidate) {
+    priceAbortRef.current?.abort();
+    const controller = new AbortController();
+    priceAbortRef.current = controller;
+    setPriceBusy(true);
+    try {
+      const response = await fetch(`/api/admin/popis-otpis/lookup?store_id=${encodeURIComponent(list.store_id)}&barcode=${encodeURIComponent(article.barcode)}&article_id=${article.article_id}`, { cache: "no-store", signal: controller.signal });
+      const data = await response.json();
+      if (!response.ok) throw new Error("Aktuelna cena za izabranu radnju nije dostupna.");
+      const candidate = data.candidates?.find((row: Candidate) => row.article_id === article.article_id && row.barcode === article.barcode);
+      if (!candidate) throw new Error("Aktuelna cena za izabranu radnju nije dostupna.");
+      if (!controller.signal.aborted) setSelected((current) => current?.article_id === article.article_id && current.barcode === article.barcode ? candidate : current);
+    } catch {
+      if (!controller.signal.aborted) setSelected((current) => current?.article_id === article.article_id ? { ...current, price: null, price_source: "unavailable", price_message: "Aktuelna cena za izabranu radnju nije dostupna." } : current);
+    } finally {
+      if (priceAbortRef.current === controller) { setPriceBusy(false); priceAbortRef.current = null; }
+    }
   }
 
   async function addItem(event?: React.FormEvent) {
     event?.preventDefault();
-    if (!selected || saveBusy || saveLockRef.current || list.status !== "draft") return;
+    if (!selected || priceBusy || saveBusy || saveLockRef.current || list.status !== "draft") return;
     const amount = Number(quantity.replace(",", "."));
     const isoExpirationDate = parseWriteoffDate(expirationDate);
     if (!Number.isFinite(amount) || amount <= 0 || !isoExpirationDate) {
@@ -129,6 +153,9 @@ export function PopisOtpisEditor({ list: initialList, initialItems }: { list: Wr
 
   function clearSelection() {
     lookupAbortRef.current?.abort();
+    priceAbortRef.current?.abort();
+    priceAbortRef.current = null;
+    setPriceBusy(false);
     lookupRequestRef.current += 1;
     lookupLockRef.current = false;
     setLookupBusy(false);
@@ -238,7 +265,7 @@ export function PopisOtpisEditor({ list: initialList, initialItems }: { list: Wr
           {candidates.length > 1 ? (
             <div className="mt-4 space-y-2 rounded-md border border-amber-200 bg-amber-50 p-3">
               <p className="text-sm font-bold text-amber-900">Barkod odgovara za više artikala. Izaberite tačan artikal:</p>
-              {candidates.map((candidate) => <button className="block w-full rounded-md border border-amber-300 bg-white p-3 text-left text-sm" key={candidate.article_id} onClick={() => chooseCandidate(candidate)} type="button"><strong>{candidate.article_name}</strong><br />Šifra: {candidate.article_code ?? "-"} · ID: {candidate.article_id} · Stanje: {candidate.stock_amount ?? "-"}</button>)}
+              {candidates.map((candidate) => <button className="block w-full rounded-md border border-amber-300 bg-white p-3 text-left text-sm" key={candidate.article_id} onClick={() => chooseCandidate(candidate)} type="button"><strong>{candidate.article_name}</strong><br />Šifra: {candidate.article_code ?? "-"} · ID: {candidate.article_id}</button>)}
             </div>
           ) : null}
 
@@ -249,8 +276,10 @@ export function PopisOtpisEditor({ list: initialList, initialItems }: { list: Wr
                   <h3 className="font-bold text-slate-950">{selected.article_name}</h3>
                   <p className="text-sm text-slate-700">Šifra: {selected.article_code ?? "-"} · ID: {selected.article_id}</p>
                   <p className="text-sm text-slate-700">Barkod: {selected.barcode} · Jed. mere: {selected.unit ?? "-"}</p>
-                  <p className="mt-2 text-sm font-semibold text-slate-800">Trenutno stanje: {selected.stock_amount ?? "Trenutno stanje nije dostupno"}</p>
-                  <p className="text-xs text-slate-600">Preuzeto: {new Date(selected.stock_fetched_at).toLocaleString("sr-RS")}</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-800">Cena za {storeName(list)}: {priceBusy ? "Provera cene..." : typeof selected.price !== "number" || !Number.isFinite(selected.price) ? "Nije dostupna" : `${selected.price.toLocaleString("sr-RS", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} din`}</p>
+                  {selected.price_checked_at ? <p className="text-xs text-slate-600">Cena proverena: {formatStockTimestamp(selected.price_checked_at)} · {selected.price_source === "live" ? "BizniSoft" : "Sinhronizovani cenovnik"}</p> : null}
+                  {selected.price_message ? <p className="mt-1 text-sm font-semibold text-amber-800">{selected.price_message}</p> : null}
+                  {selected.price_source === "unavailable" ? <button className="mt-1 text-sm font-semibold text-leaf" disabled={priceBusy} onClick={() => void refreshSelectedPrice(selected)} type="button">Proveri cenu ponovo</button> : null}
                 </div>
                 <button aria-label="Poništi artikal" className="button-secondary px-3" onClick={clearSelection} type="button">×</button>
               </div>
@@ -259,7 +288,7 @@ export function PopisOtpisEditor({ list: initialList, initialItems }: { list: Wr
                 <ExpirationDateInput disabled={saveBusy} value={expirationDate} onChange={setExpirationDate} />
               </div>
               <p className="mt-3 text-sm text-slate-700">Dobavljač: <strong>{list.supplier_name}</strong></p>
-              <button className="button-primary mt-4 w-full" disabled={saveBusy} type="submit">{saveBusy ? "Čuvanje..." : "Potvrdi stavku"}</button>
+              <button className="button-primary mt-4 w-full" disabled={saveBusy || priceBusy} type="submit">{saveBusy ? "Čuvanje..." : "Potvrdi stavku"}</button>
             </form>
           ) : null}
         </section>
