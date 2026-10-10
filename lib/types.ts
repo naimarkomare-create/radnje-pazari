@@ -328,3 +328,48 @@ export type ArticleLookupItem = {
   unit: string | null;
   suppliers: ArticleSupplierOption[];
 };
+
+export type WriteoffListStatus = "draft" | "finalized";
+
+export type WriteoffList = {
+  id: string;
+  reference: string;
+  store_id: string;
+  supplier_id: string;
+  supplier_name: string;
+  status: WriteoffListStatus;
+  created_by: string;
+  finalized_at: string | null;
+  created_at: string;
+  updated_at: string;
+  stores?: Pick<Store, "id" | "name" | "biznisoft_storage_id"> | Pick<Store, "id" | "name" | "biznisoft_storage_id">[] | null;
+  item_count?: number;
+};
+
+export type WriteoffListItem = {
+  id: string;
+  writeoff_list_id: string;
+  client_entry_id: string;
+  store_id: string;
+  supplier_id: string;
+  article_id: number;
+  article_code: string | null;
+  barcode: string;
+  article_name: string;
+  unit: string | null;
+  quantity: number;
+  expiration_date: string;
+  stock_amount: number | null;
+  stock_fetched_at: string | null;
+  price: number | null;
+  level_price: number | null;
+  account: string | null;
+  popdv_id: string | null;
+  vat_transaction_type: string | null;
+  operator_name: string | null;
+  modify_time: string | null;
+  supplier_name: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};

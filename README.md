@@ -252,6 +252,63 @@ where check_date < current_date - interval '30 days';
 2. Ako nema starih redova, cleanup treba da vrati `deletedFiles: 0`.
 3. Ako želite test brisanja, napravite samo jedan test red i test sliku u `shelf-photos` bucket-u, sa datumom starijim od 30 dana.
 
+## Popis robe za otpis
+
+Admin modul je dostupan na `/admin/popis-otpis`. Pre korišćenja pokrenite novu migraciju:
+
+```text
+supabase/migrations/025_writeoff_lists.sql
+```
+
+Migracija pravi admin-only tabele `writeoff_lists` i `writeoff_list_items`. Potvrđene stavke se čuvaju odmah u Supabase-u kao nacrt, zajedno sa stanjem zalihe i poljima potrebnim za izvoz. Store korisnici nemaju pristup ovom modulu.
+
+Obavezno zadržite dostavljeni radni šablon na putanji:
+
+```text
+public/templates/excel/biznisoft-otpis-import.xlsx
+```
+
+Šablon mora biti originalni fajl koji je već uspešno uvezen u BizniSoft. Aplikacija iz njega pravi samo pripremni XLSX; ne poziva BizniSoft write metode, ne kreira dokument i ne knjiži otpis.
+
+Za pretragu artikala radnja mora imati podešen `stores.biznisoft_storage_id`, a lokalna `biznisoft_stock_price_current` sinhronizacija mora sadržati stanje, barkod, naziv i cenu. BizniSoft `ID` se koristi kao autoritativna interna šifra i u XLSX-u se čuva kao tekst od šest cifara, pa vodeće nule ostaju sačuvane.
+
+Cena se uzima samo iz sinhronizovanog BizniSoft `RetailPrice` podatka. Konto, POPDV ID, vrsta PDV prometa i Niv.cena uzimaju se samo ako postoje u autoritativnom zapisu. Ako neko od tih polja nedostaje, BizniSoft izvoz se namerno blokira umesto da koristi vrednosti iz primera šablona ili pretpostavljene vrednosti. Finalizacija nacrta i dobavljački izvoz ne zavise od tih računovodstvenih polja, pa se sačuvani popis može proveriti i preuzeti za dobavljača bez gubitka stavki.
+
+Tok rada:
+
+1. Admin izabere radnju i dobavljača i kreira nacrt.
+2. U polje barkoda skener može unositi vrednost kao tastatura i poslati `Enter`; skeniranje samo pokreće pretragu, ne dodaje stavku automatski.
+3. Admin potvrđuje količinu i datum isteka, pa klikne `Dodaj stavku`.
+4. Nacrt se može nastaviti, menjati ili brisati pre završavanja.
+5. Posle završavanja preuzimaju se odvojeno BizniSoft import i izveštaj za dobavljača.
+
+Za regresioni test izvoza, bez Supabase-a i BizniSoft-a, pokrenite:
+
+```bash
+npm run test:writeoff-export
+```
+
+Test proverava originalni naziv lista i 20 kolona, dinamički footer, količine 3/2/3/12 sa ukupno 20, vodeće nule, 1/10/100/500 stavki, agregaciju istog artikla i odvojene rokove u dobavljačkom fajlu. Za kontrolu blokade može se napraviti i bezbedan test sa četiri artikla i praznim poljima Konto/Niv.cena/POPDV/VAT:
+
+```bash
+node scripts/popis-otpis-export-test.cjs --write-optional-fields-test
+```
+
+Fajl se piše u `biznisoft-output/popis-otpis-optional-fields-test.xlsx`, ne šalje se automatski i namenjen je samo ručnom uvozu u novi neobjavljeni/test dokument. Dok takav uvoz ne potvrdi koja su polja zaista obavezna, produkcijski BizniSoft izvoz ostaje blokiran kada računovodstveni podaci nisu pouzdano dostupni.
+
+Za izolovano ispitivanje importera pokrenite `node scripts/writeoff-diagnostics.cjs`.
+U `biznisoft-output/diagnostics/` se čuvaju A (identičan original), B (samo Niv.cena prazna), C (samo Konto prazno), D (samo POPDV ID prazan), E (samo vrsta PDV prometa prazna) i F (sva četiri prazna). Svi koriste isključivo originalne četiri stavke sa količinama 3/2/3/12, ukupno 20. Nijedna druga ćelija ili XLSX XML deo nije izmenjen; A je i bajt-po-bajt identičan originalu. Detaljan pregled svih ćelija, stilova, tipova i ZIP/XML delova je u `workbook-comparison.json`, a redosled bezbednog ručnog testiranja u `TEST-ORDER.txt`.
+
+Svaki test koristite u novom neproknjiženom test dokumentu sa istim mapiranjem i podešavanjima. Ako A ne daje tačne količine, zaustavite test i proverite podešavanja importa. Uspešno prepoznavanje artikla nije dokaz ispravnog uvoza količine. Ne potvrđujte i ne knjižite test dokumente. Računovodstvene provere u aplikaciji ostaju uključene.
+
+### Probni izvoz stvarnog završenog popisa
+
+Na završenom popisu kliknite `BizniSoft izvoz` za direktno preuzimanje kontrolisanog fajla, bez dodatne potvrde. Mala oznaka `Probni XLSX` ostaje dok se ne potvrdi puna produkcijska kompatibilnost. Ovaj fajl čita samo stavke izabranog završenog popisa u Supabase-u, ne primer iz šablona i ne stanje zaliha. Nedostupna cena, Niv.cena, Konto, POPDV ID i vrsta PDV prometa ostaju prazni. Fajl je označen prefiksom `PROBNI-`. Odvojeni zahtev sa `?mode=production` zadržava strogu računovodstvenu validaciju.
+
+Datumi isteka se unose i prikazuju kao `DD/MM/YY` (godine 2000–2099), uz kalendar nezavisan od regionalnih podešavanja telefona. Baza i zahtevi koriste `YYYY-MM-DD`; Excel za dobavljača koristi prave datumske ćelije sa formatom `dd/mm/yy`.
+
+Server pre slanja ponovo otvara baš bajtove koji će biti preuzeti i proverava svaki barkod, šifru, naziv, numeričku količinu, broj artikala i ukupnu količinu. Ako provera ne uspe, nema preuzimanja. Normalan izvoz zadržava stroge provere, a dobavljački izvoz je nepromenjen.
+
 ## Vercel Cron
 
 `vercel.json` pokreće postojeću sinhronizaciju cena i cleanup starih nacrta povrata jednom dnevno u 05:00 UTC:
