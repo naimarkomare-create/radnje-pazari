@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { BizniSoftTurnoverResult } from "@/lib/biznisoft/turnover-types";
 import { BELGRADE_TIME_ZONE, formatSerbianIsoDate, todayInBelgrade } from "@/lib/date";
@@ -33,7 +33,7 @@ export function TurnoverDashboard({
   const dates = [today, yesterday, dayBeforeYesterday];
   const [days, setDays] = useState<Record<string, DayState>>(() =>
     Object.fromEntries(
-      dates.map((date) => [date, { data: null, error: null, loading: false }])
+      dates.map((date) => [date, { data: null, error: null, loading: true }])
     )
   );
   const [countdown, setCountdown] = useState(REFRESH_SECONDS);
@@ -194,7 +194,7 @@ export function TurnoverDashboard({
         <div>
           <p className="text-xs font-bold uppercase text-leaf">Današnji promet</p>
           <p className="mt-1 text-sm text-slate-600">Automatsko osvežavanje na 30 sekundi</p>
-          <p className="mt-1 text-sm font-medium text-slate-700" aria-live="polite">
+          <p className="mt-1 text-sm font-medium text-slate-700" role="timer">
             Sledeće osvežavanje za {countdown} sekundi
           </p>
         </div>
@@ -223,19 +223,19 @@ export function TurnoverDashboard({
           businessDate={today}
           emphasized
           label="Danas"
-          onRetry={() => void requestTurnover(today, true)}
+          onRetry={requestTurnover}
           state={days[today]}
         />
         <TurnoverCard
           businessDate={yesterday}
           label="Juče"
-          onRetry={() => void requestTurnover(yesterday, true)}
+          onRetry={requestTurnover}
           state={days[yesterday]}
         />
         <TurnoverCard
           businessDate={dayBeforeYesterday}
           label="Prekjuče"
-          onRetry={() => void requestTurnover(dayBeforeYesterday, true)}
+          onRetry={requestTurnover}
           state={days[dayBeforeYesterday]}
         />
       </section>
@@ -243,7 +243,7 @@ export function TurnoverDashboard({
   );
 }
 
-function TurnoverCard({
+const TurnoverCard = memo(function TurnoverCard({
   businessDate,
   label,
   state,
@@ -254,9 +254,10 @@ function TurnoverCard({
   label: string;
   state: DayState | undefined;
   emphasized?: boolean;
-  onRetry: () => void;
+  onRetry: (date: string, force?: boolean) => Promise<void>;
 }) {
   const data = state?.data ?? null;
+  const loading = state?.loading ?? true;
   const visibleWarning = state?.error ?? data?.warning ?? null;
   const status = statusFor(state);
 
@@ -267,7 +268,7 @@ function TurnoverCard({
       }`}
     >
       <header
-        className={`flex items-start justify-between gap-3 border-b px-4 py-4 ${
+        className={`flex flex-wrap items-start justify-between gap-3 border-b px-4 py-4 ${
           emphasized ? "border-leaf/20 bg-green-50" : "border-slate-200 bg-slate-50"
         }`}
       >
@@ -309,7 +310,7 @@ function TurnoverCard({
                   className="flex min-w-0 items-center justify-between gap-3 py-3 text-sm"
                   key={store.storeId}
                 >
-                  <span className="min-w-0 truncate font-semibold text-slate-700">
+                  <span className="min-w-0 break-words font-semibold text-slate-700">
                     {store.storeName}
                   </span>
                   <span
@@ -330,7 +331,7 @@ function TurnoverCard({
         </>
       ) : (
         <div className="px-4 py-8">
-          {state?.loading ? (
+          {loading ? (
             <div className="space-y-4" aria-label="Učitavanje prometa">
               <div className="h-8 w-2/3 animate-pulse rounded bg-slate-200" />
               <div className="space-y-3">
@@ -347,7 +348,7 @@ function TurnoverCard({
               {visibleWarning ? (
                 <p className="mt-2 text-sm text-slate-600">{visibleWarning}</p>
               ) : null}
-              <button className="button-secondary mt-4" onClick={onRetry} type="button">
+              <button className="button-secondary mt-4" onClick={() => void onRetry(businessDate, true)} type="button">
                 Pokušaj ponovo
               </button>
             </div>
@@ -362,7 +363,7 @@ function TurnoverCard({
       ) : null}
     </article>
   );
-}
+});
 
 function StatusBadge({ status }: { status: "fresh" | "stale" | "loading" | "error" }) {
   const styles = {
@@ -388,7 +389,7 @@ function StatusBadge({ status }: { status: "fresh" | "stale" | "loading" | "erro
 }
 
 function statusFor(state: DayState | undefined) {
-  if (state?.loading) return "loading" as const;
+  if (!state || state.loading) return "loading" as const;
   if (state?.data?.refreshing) return "loading" as const;
   if (state?.error && state.data) return "stale" as const;
   if (state?.data?.stale) return "stale" as const;

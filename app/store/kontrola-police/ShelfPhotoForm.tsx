@@ -7,6 +7,7 @@ import type { ActionState } from "@/lib/types";
 
 export function ShelfPhotoForm({ storeId, today }: { storeId: string; today: string }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const submittingRef = useRef(false);
   const [checkDate, setCheckDate] = useState(today);
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(false);
@@ -14,6 +15,7 @@ export function ShelfPhotoForm({ storeId, today }: { storeId: string; today: str
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submittingRef.current) return;
     setState({ ok: false, message: "" });
 
     const file = fileRef.current?.files?.[0];
@@ -22,6 +24,7 @@ export function ShelfPhotoForm({ storeId, today }: { storeId: string; today: str
       return;
     }
 
+    submittingRef.current = true;
     setLoading(true);
 
     try {
@@ -41,7 +44,7 @@ export function ShelfPhotoForm({ storeId, today }: { storeId: string; today: str
         });
 
       if (uploadError) {
-        setState({ ok: false, message: uploadError.message });
+        setState({ ok: false, message: "Slika nije otpremljena. Proverite vezu i pokušajte ponovo." });
         return;
       }
 
@@ -52,9 +55,10 @@ export function ShelfPhotoForm({ storeId, today }: { storeId: string; today: str
         setNote("");
         if (fileRef.current) fileRef.current.value = "";
       }
-    } catch (error) {
-      setState({ ok: false, message: error instanceof Error ? error.message : "Greška pri slanju slike." });
+    } catch {
+      setState({ ok: false, message: "Slanje slike nije uspelo. Pokušajte ponovo." });
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   }
@@ -63,7 +67,7 @@ export function ShelfPhotoForm({ storeId, today }: { storeId: string; today: str
     <form className="space-y-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5" onSubmit={onSubmit}>
       <label className="field max-w-xs">
         <span className="label">Datum</span>
-        <input className="input" onChange={(event) => setCheckDate(event.target.value)} required type="date" value={checkDate} />
+        <input className="input" disabled={loading} onChange={(event) => setCheckDate(event.target.value)} required type="date" value={checkDate} />
       </label>
       <label className="field">
         <span className="label">Slikaj policu</span>
@@ -72,16 +76,17 @@ export function ShelfPhotoForm({ storeId, today }: { storeId: string; today: str
           accept="image/*"
           capture="environment"
           className="input"
+          disabled={loading}
           required
           type="file"
         />
       </label>
       <label className="field">
         <span className="label">Napomena</span>
-        <textarea className="input min-h-24 resize-y" onChange={(event) => setNote(event.target.value)} value={note} />
+        <textarea className="input min-h-24 resize-y" disabled={loading} onChange={(event) => setNote(event.target.value)} value={note} />
       </label>
       {state.message ? (
-        <p className={`rounded-md px-3 py-3 text-sm ${state.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+        <p className={`rounded-md px-3 py-3 text-sm ${state.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`} role={state.ok ? "status" : "alert"}>
           {state.message}
         </p>
       ) : null}

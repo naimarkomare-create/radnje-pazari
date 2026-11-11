@@ -7,7 +7,7 @@ import Link from "next/link";
 import { TemperatureExportPanel } from "@/app/admin/temperature/TemperatureExportPanel";
 import { requireAdmin } from "@/lib/auth";
 import { positiveInteger } from "@/lib/pagination";
-import { todayInBelgrade } from "@/lib/date";
+import { formatSerbianIsoDate, todayInBelgrade } from "@/lib/date";
 import { PRODUCE_STORE_NAMES, sortProduceStores } from "@/lib/produce";
 import { createClient } from "@/lib/supabase/server";
 import type { Store, TemperatureReport } from "@/lib/types";
@@ -68,10 +68,15 @@ export default async function AdminTemperaturePage({
           selectedStore={selectedStore}
           stores={stores}
         />
-        <section className="grid gap-5 lg:grid-cols-2">
-          <StatusPanel title="Poslali temperaturu" stores={submittedStores} empty="Nijedna radnja nije poslala temperaturu." />
-          <StatusPanel title="Nisu poslali temperaturu" stores={missingStores} empty="Sve radnje su poslale temperaturu." />
-        </section>
+        {!storesResult.error && !statusReports.error && stores.length > 0 ? (
+          <section className="space-y-3">
+            <h2 className="text-lg font-bold text-ink">Sve radnje · {formatSerbianIsoDate(selectedDate)}</h2>
+            <div className="grid gap-5 lg:grid-cols-2">
+              <StatusPanel title="Poslali temperaturu" stores={submittedStores} empty="Nijedna radnja nije poslala temperaturu." />
+              <StatusPanel title="Nisu poslali temperaturu" stores={missingStores} empty="Sve radnje su poslale temperaturu." />
+            </div>
+          </section>
+        ) : null}
         <TemperatureTable
           error={dataErrorMessage(reports.error) ?? dataErrorMessage(storesResult.error) ?? dataErrorMessage(statusReports.error)}
           reports={(reports.data ?? []) as unknown as TemperatureReport[]}

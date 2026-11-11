@@ -6,7 +6,7 @@ import { Pagination } from "@/components/Pagination";
 import { formatTime } from "@/components/ShelfPhotoGrid";
 import { requireAdmin } from "@/lib/auth";
 import { positiveInteger } from "@/lib/pagination";
-import { todayInBelgrade } from "@/lib/date";
+import { formatSerbianIsoDate, todayInBelgrade } from "@/lib/date";
 import { PRODUCE_STORE_NAMES, sortProduceStores } from "@/lib/produce";
 import { withSignedShelfPhotoUrls } from "@/lib/shelf-photos";
 import { createClient } from "@/lib/supabase/server";
@@ -59,24 +59,27 @@ export default async function AdminShelfPhotoPage({
     (photosResult.data ?? []) as unknown as ProduceShelfPhotoCheck[]
   );
   const submittedIds = new Set((statusResult.data ?? []).filter((photo) => photo.storage_path).map((photo) => photo.store_id as string));
-  const submittedStores = stores.filter((store) => submittedIds.has(store.id));
-  const missingStores = stores.filter((store) => !submittedIds.has(store.id));
+  const statusStores = selectedStore ? stores.filter((store) => store.id === selectedStore) : stores;
+  const submittedStores = statusStores.filter((store) => submittedIds.has(store.id));
+  const missingStores = statusStores.filter((store) => !submittedIds.has(store.id));
+  const error = dataErrorMessage(storesResult.error) ?? dataErrorMessage(photosResult.error) ?? dataErrorMessage(statusResult.error);
 
   return (
     <>
       <PageHeader eyebrow="Admin pregled" title="Kontrola voća i povrća" />
       <div className="page-content">
         <AdminFilters selectedDate={selectedDate} selectedStore={selectedStore} stores={stores} />
-        {storesResult.error || photosResult.error ? (
-          <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-            {dataErrorMessage(storesResult.error) ?? dataErrorMessage(photosResult.error)}
-          </p>
+        {error ? <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{error}</p> : null}
+        {!storesResult.error && !statusResult.error && statusStores.length > 0 ? (
+          <section className="space-y-3">
+            <h2 className="text-lg font-bold text-ink">Slike za {formatSerbianIsoDate(selectedDate)}</h2>
+            <div className="grid gap-5 lg:grid-cols-2">
+              <StatusPanel empty="Nema radnji u ovoj grupi." stores={submittedStores} title="Poslali sliku" />
+              <StatusPanel empty="Nema radnji u ovoj grupi." stores={missingStores} title="Nisu poslali sliku" />
+            </div>
+          </section>
         ) : null}
-        <section className="grid gap-5 lg:grid-cols-2">
-          <StatusPanel empty="Nijedna radnja nije poslala sliku." stores={submittedStores} title="Poslali danas" />
-          <StatusPanel empty="Sve radnje su poslale sliku." stores={missingStores} title="Nisu poslali danas" />
-        </section>
-        <ShelfPhotoAdminTable photos={photos} />
+        {!photosResult.error ? <ShelfPhotoAdminTable photos={photos} /> : null}
         <Pagination
           page={page}
           pageSize={30}
@@ -118,7 +121,7 @@ function ShelfPhotoAdminTable({ photos }: { photos: ProduceShelfPhotoCheck[] }) 
 
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="overflow-x-auto">
+      <div aria-label="Poslate slike" className="overflow-x-auto" role="region" tabIndex={0}>
         <table className="w-full min-w-[860px] border-collapse text-left text-sm">
           <thead>
             <tr>

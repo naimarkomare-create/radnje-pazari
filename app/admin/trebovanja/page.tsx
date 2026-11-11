@@ -23,11 +23,10 @@ export default async function AdminProduceRequestsPage({
       : typeof searchParams.store === "string"
         ? searchParams.store
         : "";
-  const storesResult = await supabase
+  const storesQuery = supabase
     .from("stores")
     .select("id, name, created_at")
     .in("name", [...PRODUCE_STORE_NAMES]);
-  const stores = sortProduceStores((storesResult.data ?? []) as Store[]);
 
   let query = supabase
     .from("produce_request_batches")
@@ -38,7 +37,8 @@ export default async function AdminProduceRequestsPage({
     .order("created_at", { ascending: false });
 
   if (selectedStore) query = query.eq("store_id", selectedStore);
-  const batchesResult = await query;
+  const [storesResult, batchesResult] = await Promise.all([storesQuery, query]);
+  const stores = sortProduceStores((storesResult.data ?? []) as Store[]);
   const rows = buildProduceMatrix((batchesResult.data ?? []) as unknown as ProduceRequestBatch[]);
 
   return (

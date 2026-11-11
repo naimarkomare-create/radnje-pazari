@@ -1,10 +1,11 @@
 import { formatMoney } from "@/components/ReportLists";
+import { formatBelgradeDateTime } from "@/lib/date";
 import { formatTemperatureSlot } from "@/lib/temperature-slots";
 import type { DailyRevenueReport, TemperatureReport } from "@/lib/types";
 
 export function DailyRevenueTable({ reports, error }: { reports: DailyRevenueReport[]; error?: string }) {
   return (
-    <AdminTable error={error} title="Pazari">
+    <AdminTable empty={reports.length === 0} error={error} title="Pazari">
       <thead>
         <tr>
           <Th>Datum</Th>
@@ -35,7 +36,7 @@ export function DailyRevenueTable({ reports, error }: { reports: DailyRevenueRep
             <Td>{formatMoney(report.edopuna_revenue)}</Td>
             <Td>{formatMoney(report.total_revenue)}</Td>
             <Td>{report.note ?? "-"}</Td>
-            <Td>{formatDateTime(report.created_at)}</Td>
+            <Td>{formatBelgradeDateTime(report.created_at)}</Td>
           </tr>
         ))}
       </tbody>
@@ -45,7 +46,7 @@ export function DailyRevenueTable({ reports, error }: { reports: DailyRevenueRep
 
 export function TemperatureTable({ reports, error }: { reports: TemperatureReport[]; error?: string }) {
   return (
-    <AdminTable error={error} title="Temperature">
+    <AdminTable empty={reports.length === 0} error={error} title="Temperature">
       <thead>
         <tr>
           <Th>Datum</Th>
@@ -74,20 +75,26 @@ export function TemperatureTable({ reports, error }: { reports: TemperatureRepor
 
 function AdminTable({
   title,
+  empty,
   error,
   children
 }: {
   title: string;
+  empty: boolean;
   error?: string;
   children: React.ReactNode;
 }) {
   return (
     <section className="interactive-card rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
       <h2 className="text-lg font-bold text-ink">{title}</h2>
-      {error ? <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
-      <div className="mt-3 overflow-x-auto">
-        <table className="w-full min-w-[760px] border-collapse text-left text-sm">{children}</table>
-      </div>
+      {error ? <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{error}</p> : null}
+      {empty ? (
+        error ? null : <p className="py-4 text-sm text-slate-600">Nema unosa za izabrane filtere.</p>
+      ) : (
+        <div aria-label={title} className="mt-3 overflow-x-auto" role="region" tabIndex={0}>
+          <table className="w-full min-w-[760px] border-collapse text-left text-sm">{children}</table>
+        </div>
+      )}
     </section>
   );
 }
@@ -98,11 +105,4 @@ function Th({ children }: { children: React.ReactNode }) {
 
 function Td({ children }: { children: React.ReactNode }) {
   return <td className="border-b border-slate-100 px-3 py-2 align-top text-slate-700">{children}</td>;
-}
-
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("sr-RS", {
-    dateStyle: "short",
-    timeStyle: "short"
-  }).format(new Date(value));
 }

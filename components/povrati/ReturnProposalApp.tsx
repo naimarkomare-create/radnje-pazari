@@ -294,17 +294,19 @@ export function ReturnProposalApp({
         </div>
       </section>
 
-      {message ? <p className="rounded-md bg-green-50 px-3 py-2 text-sm font-semibold text-green-700">{message}</p> : null}
-      {error ? <p className="rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p> : null}
+      {message ? <p className="rounded-md bg-green-50 px-3 py-2 text-sm font-semibold text-green-700" role="status">{message}</p> : null}
+      {error ? <p className="rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700" role="alert">{error}</p> : null}
 
       <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <h2 className="font-bold text-slate-950">Moje najave</h2>
+        {proposals.length === 0 ? <p className="mt-2 text-sm text-slate-600">Još nema najava povrata.</p> : null}
         <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
           {proposals.map((proposal) => {
             const active = activeProposal?.id === proposal.id;
             return (
               <button
-                className={`min-w-72 max-w-sm rounded-md border px-3 py-2 text-left text-sm transition-colors ${
+                aria-current={active ? "true" : undefined}
+                className={`min-h-11 w-72 max-w-full shrink-0 rounded-md border px-3 py-2 text-left text-sm transition-colors ${
                   active
                     ? "border-leaf bg-leaf text-white"
                     : "border-slate-200 bg-white text-slate-700"

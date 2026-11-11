@@ -21,6 +21,11 @@ type Candidate = {
   suppliers: Array<{ id: string; name: string; is_primary: boolean }>;
 };
 
+type ItemRevision = Pick<WriteoffListItem, "id" | "quantity" | "expiration_date" | "updated_at">;
+type ItemChange = { item: ItemRevision } & (
+  { method: "PATCH"; values: Pick<ItemRevision, "quantity" | "expiration_date"> } | { method: "DELETE" }
+);
+
 export function PopisOtpisEditor({ list: initialList, initialItems }: { list: WriteoffList; initialItems: WriteoffListItem[] }) {
   const barcodeRef = useRef<HTMLInputElement>(null);
   const [list, setList] = useState(initialList);
@@ -38,6 +43,9 @@ export function PopisOtpisEditor({ list: initialList, initialItems }: { list: Wr
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingQuantity, setEditingQuantity] = useState("");
   const [editingDate, setEditingDate] = useState("");
+  const [itemPending, setItemPending] = useState<{ id: string; text: string } | null>(null);
+  const [itemMessage, setItemMessage] = useState<{ id: string; text: string; ok: boolean } | null>(null);
+  const [unverifiedChange, setUnverifiedChange] = useState<ItemChange | null>(null);
   const lookupLockRef = useRef(false);
   const lookupAbortRef = useRef<AbortController | null>(null);
   const lookupRequestRef = useRef(0);
@@ -113,7 +121,7 @@ export function PopisOtpisEditor({ list: initialList, initialItems }: { list: Wr
 
   async function addItem(event?: React.FormEvent) {
     event?.preventDefault();
-    if (!selected || priceBusy || saveBusy || saveLockRef.current || list.status !== "draft") return;
+    if (!selected || priceBusy || saveBusy || saveLockRef.current || unverifiedChange || list.status !== "draft") return;
     const amount = Number(quantity.replace(",", "."));
     const isoExpirationDate = parseWriteoffDate(expirationDate);
     if (!Number.isFinite(amount) || amount <= 0 || !isoExpirationDate) {
@@ -176,45 +184,145 @@ export function PopisOtpisEditor({ list: initialList, initialItems }: { list: Wr
     }, 0);
   }
 
-  async function removeItem(itemId: string) {
-    if (!window.confirm("Obrisati ovu stavku?")) return;
-    const response = await fetch(`/api/admin/popis-otpis/${list.id}/items/${itemId}`, { method: "DELETE" });
-    const data = await response.json();
-    if (!response.ok) { setMessage(data.error ?? "Stavka nije obrisana."); return; }
-    setItems((current) => current.filter((item) => item.id !== itemId));
+  function canChangeItems() {
+    return list.status === "draft" && !saveLockRef.current && !unverifiedChange;
   }
 
-  async function saveItem(itemId: string) {
+  async function removeItem(item: WriteoffListItem) {
+    if (!canChangeItems() || !window.confirm(`Obrisati stavku „${item.article_name}“ (količina ${item.quantity})?`)) return;
+    await changeItem({ method: "DELETE", item });
+  }
+
+  async function saveItem(item: WriteoffListItem) {
+    if (!canChangeItems()) return;
+    const amount = Number(editingQuantity.replace(",", "."));
     const isoExpirationDate = parseWriteoffDate(editingDate);
-    if (!isoExpirationDate) { setMessage("Unesite ispravan datum isteka (DD/MM/YY)."); return; }
-    const response = await fetch(`/api/admin/popis-otpis/${list.id}/items/${itemId}`, {
-      body: JSON.stringify({ expiration_date: isoExpirationDate, quantity: Number(editingQuantity.replace(",", ".")) }),
-      headers: { "Content-Type": "application/json" },
-      method: "PATCH"
-    });
-    const data = await response.json();
-    if (!response.ok) { setMessage(data.error ?? "Stavka nije izmenjena."); return; }
-    setItems((current) => current.map((item) => item.id === itemId ? data.item : item));
-    setEditingId(null);
+    if (!Number.isFinite(amount) || amount <= 0 || !isoExpirationDate) {
+      setItemMessage({ id: item.id, ok: false, text: "Unesite količinu veću od 0 i ispravan datum isteka (DD/MM/YY)." });
+      return;
+    }
+    await changeItem({ method: "PATCH", item, values: { quantity: amount, expiration_date: isoExpirationDate } });
+  }
+
+  function applyItemRevision(id: string, revision: ItemRevision | null) {
+    setItems((current) => revision
+      ? current.map((item) => item.id === id ? {
+        ...item, quantity: revision.quantity, expiration_date: revision.expiration_date, updated_at: revision.updated_at
+      } : item)
+      : current.filter((item) => item.id !== id));
+    if (!revision) setEditingId((current) => current === id ? null : current);
+  }
+
+  async function changeItem(change: ItemChange, verifyOnly = false) {
+    if (saveLockRef.current || list.status !== "draft" || (!verifyOnly && unverifiedChange)) return;
+    saveLockRef.current = true;
+    setItemMessage(null);
+    const deleting = change.method === "DELETE";
+    const id = change.item.id;
+    const url = `/api/admin/popis-otpis/${list.id}/items/${id}`;
+    const notify = (text: string, ok = false) => setItemMessage({ id, text, ok });
+    let reason = "Ishod zahteva nije potvrđen.";
+    setItemPending({ id, text: verifyOnly ? "Provera sačuvanog stanja..." : deleting ? "Brisanje stavke..." : "Čuvanje izmene..." });
+
+    try {
+      if (!verifyOnly) {
+        try {
+          const { response, data } = await requestItem(url, {
+            method: change.method,
+            headers: { "Content-Type": "application/json", "If-Match": `"${change.item.updated_at}"` },
+            body: change.method === "PATCH" ? JSON.stringify(change.values) : undefined
+          });
+          if (response.ok && deleting && data?.success === true) {
+            applyItemRevision(id, null);
+            notify(data.alreadyDeleted ? "Stavka je već obrisana." : "Stavka je obrisana.", true);
+            return;
+          }
+          if (response.ok && change.method === "PATCH" && isItemRevision(data?.item, id) && matchesEdit(change, data.item)) {
+            applyItemRevision(id, data.item);
+            setEditingId(null);
+            notify("Izmena je sačuvana.", true);
+            return;
+          }
+          if ([400, 401, 403].includes(response.status)) {
+            notify(itemRequestError(response.status));
+            return;
+          }
+          if (response.status === 409) reason = "Popis ili stavka su u međuvremenu promenjeni ili je zahtev još u toku.";
+          if (response.status === 404) reason = "Popis ili stavka nisu pronađeni.";
+        } catch (error) {
+          reason = error instanceof DOMException && error.name === "TimeoutError"
+            ? "Server nije odgovorio na vreme."
+            : "Veza je prekinuta pre potvrde zahteva.";
+        }
+      }
+
+      // A lost response does not mean the write failed. Read once; never replay it automatically.
+      setUnverifiedChange(change);
+      setItemPending({ id, text: "Provera sačuvanog stanja..." });
+      const { response, data } = await requestItem(url);
+      if (!response.ok || !["draft", "finalized"].includes(data?.status) || (data.item !== null && !isItemRevision(data.item, id))) {
+        notify(`${reason} ${response.status === 401 || response.status === 403 ? itemRequestError(response.status) : "Stanje nije moguće proveriti. Pokušajte ponovo da proverite stanje."}`);
+        return;
+      }
+
+      const revision: ItemRevision | null = data.item;
+      applyItemRevision(id, revision);
+      setUnverifiedChange(null);
+      if (data.status === "finalized") {
+        setList((current) => ({ ...current, status: "finalized" }));
+        setEditingId(null);
+        notify("Popis je završen i više nije moguće menjati stavke.");
+      } else if (deleting && !revision) {
+        notify("Provereno: stavka je obrisana.", true);
+      } else if (change.method === "PATCH" && revision && matchesEdit(change, revision)) {
+        setEditingId(null);
+        notify("Provereno: tražene vrednosti su sačuvane.", true);
+      } else if (!revision) {
+        notify("Stavka više nije u popisu. Izmena nije moguća.");
+      } else {
+        notify(revision.updated_at !== change.item.updated_at
+          ? "Sačuvano stanje je promenjeno. Pregledajte nove vrednosti pre ponovnog pokušaja."
+          : `${reason} Prikazano je poslednje provereno stanje. Možete pokušati ponovo.`);
+      }
+    } catch {
+      notify(`${reason} Stanje nije moguće proveriti. Pokušajte ponovo da proverite stanje.`);
+    } finally {
+      saveLockRef.current = false;
+      setItemPending(null);
+    }
   }
 
   async function finalize() {
-    if (!window.confirm("Zaključati popis? Posle toga stavke više neće moći da se menjaju.")) return;
+    if (!canChangeItems() || !window.confirm("Zaključati popis? Posle toga stavke više neće moći da se menjaju.")) return;
+    saveLockRef.current = true;
     setSaveBusy(true);
     try {
       const response = await fetch(`/api/admin/popis-otpis/${list.id}`, { method: "POST" });
       const data = await response.json();
       if (!response.ok) setMessage(data.error ?? "Popis nije završen.");
-      else setList((current) => ({ ...current, status: "finalized", finalized_at: data.list.finalized_at }));
+      else {
+        setList((current) => ({ ...current, status: "finalized", finalized_at: data.list.finalized_at }));
+        setEditingId(null);
+      }
     } catch {
       setMessage("Popis nije završen. Proverite vezu i pokušajte ponovo.");
     } finally {
+      saveLockRef.current = false;
       setSaveBusy(false);
     }
   }
 
   const totalQuantity = items.reduce((sum, item) => sum + Number(item.quantity), 0);
   const finalized = list.status === "finalized";
+  const itemControlsDisabled = saveBusy || itemPending !== null || unverifiedChange !== null;
+  const feedbackId = itemPending?.id ?? itemMessage?.id;
+  const itemFeedback = (
+    <>
+      {itemPending ? <p className="mt-3 text-sm font-semibold text-slate-700" role="status">{itemPending.text}</p> : null}
+      {itemMessage ? <p className={`mt-3 rounded-md px-3 py-2 text-sm ${itemMessage.ok ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`} role={itemMessage.ok ? "status" : "alert"}>{itemMessage.text}</p> : null}
+      {unverifiedChange ? <button className="button-secondary mt-3" disabled={itemPending !== null} onClick={() => changeItem(unverifiedChange, true)} type="button">Proveri stanje</button> : null}
+    </>
+  );
 
   return (
     <div className="space-y-5">
@@ -288,7 +396,7 @@ export function PopisOtpisEditor({ list: initialList, initialItems }: { list: Wr
                 <ExpirationDateInput disabled={saveBusy} value={expirationDate} onChange={setExpirationDate} />
               </div>
               <p className="mt-3 text-sm text-slate-700">Dobavljač: <strong>{list.supplier_name}</strong></p>
-              <button className="button-primary mt-4 w-full" disabled={saveBusy || priceBusy} type="submit">{saveBusy ? "Čuvanje..." : "Potvrdi stavku"}</button>
+              <button className="button-primary mt-4 w-full" disabled={itemControlsDisabled || priceBusy} type="submit">{saveBusy ? "Čuvanje..." : "Potvrdi stavku"}</button>
             </form>
           ) : null}
         </section>
@@ -298,14 +406,32 @@ export function PopisOtpisEditor({ list: initialList, initialItems }: { list: Wr
       <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div><h2 className="text-lg font-bold text-slate-950">Potvrđene stavke</h2><p className="text-sm text-slate-600">{items.length} stavki · ukupno {totalQuantity}</p></div>
-          {!finalized ? <button className="button-primary" disabled={saveBusy || items.length === 0} onClick={finalize} type="button">Završi popis</button> : null}
+          {!finalized ? <button className="button-primary" disabled={itemControlsDisabled || items.length === 0} onClick={finalize} type="button">Završi popis</button> : null}
         </div>
+        {feedbackId && !items.some((item) => item.id === feedbackId) ? itemFeedback : null}
         <div className="mt-4 space-y-2">
           {items.length === 0 ? <p className="text-sm text-slate-600">Još nema potvrđenih stavki.</p> : null}
           {items.map((item) => (
             <article className="rounded-md border border-slate-200 p-3" key={item.id}>
-              <div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-slate-950">{item.article_name}</p><p className="text-xs text-slate-600">Šifra: {item.article_code ?? "-"} · Barkod: {item.barcode} · Jed. mere: {item.unit ?? "-"}</p></div>{!finalized ? <button className="text-sm font-semibold text-rose-700" onClick={() => removeItem(item.id)} type="button">Obriši</button> : null}</div>
-              {editingId === item.id ? <div className="mt-3 grid gap-2 sm:grid-cols-3"><input className="input" inputMode="decimal" value={editingQuantity} onChange={(event) => setEditingQuantity(event.target.value)} /><ExpirationDateInput value={editingDate} onChange={setEditingDate} /><button className="button-secondary" onClick={() => saveItem(item.id)} type="button">Sačuvaj</button></div> : <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-700"><span>Količina: <strong>{item.quantity}</strong> · Rok: <strong>{formatWriteoffDate(item.expiration_date)}</strong></span>{!finalized ? <button className="font-semibold text-leaf" onClick={() => { setEditingId(item.id); setEditingQuantity(String(item.quantity)); setEditingDate(formatWriteoffDate(item.expiration_date)); }} type="button">Izmeni</button> : null}</div>}
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0"><p className="font-semibold text-slate-950">{item.article_name}</p><p className="text-xs text-slate-600">Šifra: {item.article_code ?? "-"} · Barkod: {item.barcode} · Jed. mere: {item.unit ?? "-"}</p></div>
+                {!finalized ? <button className="button-secondary text-rose-700" disabled={itemControlsDisabled} onClick={() => removeItem(item)} type="button">Obriši</button> : null}
+              </div>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-700">
+                <span>Količina: <strong>{item.quantity}</strong> · Rok: <strong>{formatWriteoffDate(item.expiration_date)}</strong></span>
+                {!finalized && editingId !== item.id ? <button className="button-secondary text-leaf" disabled={itemControlsDisabled} onClick={() => { if (!canChangeItems()) return; setItemMessage(null); setEditingId(item.id); setEditingQuantity(String(item.quantity)); setEditingDate(formatWriteoffDate(item.expiration_date)); }} type="button">Izmeni</button> : null}
+              </div>
+              {!finalized && editingId === item.id ? (
+                <form className="mt-3 grid gap-2" onSubmit={(event) => { event.preventDefault(); return saveItem(item); }}>
+                  <label className="field"><span className="label">Nova količina</span><input className="input" inputMode="decimal" disabled={itemControlsDisabled} value={editingQuantity} onChange={(event) => setEditingQuantity(event.target.value)} /></label>
+                  <ExpirationDateInput disabled={itemControlsDisabled} value={editingDate} onChange={setEditingDate} />
+                  <div className="flex flex-wrap gap-2">
+                    <button className="button-secondary" disabled={itemControlsDisabled} type="submit">Sačuvaj</button>
+                    <button className="button-secondary" disabled={itemControlsDisabled} onClick={() => setEditingId(null)} type="button">Otkaži</button>
+                  </div>
+                </form>
+              ) : null}
+              {feedbackId === item.id ? itemFeedback : null}
             </article>
           ))}
         </div>
@@ -313,6 +439,38 @@ export function PopisOtpisEditor({ list: initialList, initialItems }: { list: Wr
       </section>
     </div>
   );
+}
+
+async function requestItem(url: string, init?: RequestInit) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const response = await fetch(url, { ...init, cache: "no-store", signal: controller.signal });
+    const data = await response.json().catch(() => null);
+    if (controller.signal.aborted) throw new DOMException("Request timed out", "TimeoutError");
+    return { response, data };
+  } catch (error) {
+    if (controller.signal.aborted) throw new DOMException("Request timed out", "TimeoutError");
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function isItemRevision(value: unknown, id: string): value is ItemRevision {
+  const item = value as Partial<ItemRevision> | null | undefined;
+  return item?.id === id && typeof item.quantity === "number" && Number.isFinite(item.quantity) && item.quantity > 0 &&
+    typeof item.expiration_date === "string" && typeof item.updated_at === "string" && Number.isFinite(Date.parse(item.updated_at));
+}
+
+function matchesEdit(change: Extract<ItemChange, { method: "PATCH" }>, revision: ItemRevision) {
+  return revision.quantity === change.values.quantity && revision.expiration_date === change.values.expiration_date;
+}
+
+function itemRequestError(status: number) {
+  if (status === 401) return "Sesija je istekla. Prijavite se ponovo pre izmene popisa.";
+  if (status === 403) return "Nemate dozvolu za izmenu ili brisanje stavki ovog popisa.";
+  return "Zahtev nije ispravan. Proverite količinu i datum, ili ponovo učitajte popis.";
 }
 
 function storeName(list: WriteoffList) {

@@ -27,7 +27,7 @@ const realLibraries = new Set([
   "lib/security/sync-lock.ts", "lib/return-proposals.ts", "lib/date.ts", "lib/pagination.ts",
   "lib/revenue.ts", "lib/temperature-slots.ts", "lib/shelf-photos.ts", "lib/tasks.ts",
   "lib/biznisoft/soap-client.ts", "lib/biznisoft/sync-suppliers.ts", "lib/excel-templates.ts", "lib/produce.ts",
-  "lib/temperature-bulk-export.ts", "lib/supabase/auth-errors.ts"
+  "lib/temperature-bulk-export.ts", "lib/supabase/auth-errors.ts", "lib/popis-otpis.ts", "lib/writeoff-list-lock.ts"
 ]);
 
 // Load actual TS handlers, replacing only their external boundaries, never making real requests.
@@ -148,6 +148,95 @@ async function main() {
     }
     assert.ok(handlers >= 40);
     console.log(`  ${handlers} denied handler invocations (including delegated routes)`);
+  });
+  await test("write-off item changes use version checks and cannot overlap finalization", async () => {
+    const v1 = "2026-11-11T10:00:00.123456+00:00";
+    const v2 = "2026-11-11T10:00:00.123457+00:00";
+    const original = { id: objectId, writeoff_list_id: store1, store_id: store2, supplier_id: user2, barcode: "0001234567890", article_code: "001039", article_name: "Test", article_id: 1039, quantity: 13, expiration_date: "2027-01-05", updated_at: v1 };
+    let item = { ...original };
+    let status = "draft";
+    let leased = false;
+    let delayUpdate;
+    let mutationStarted;
+    const service = database(async (call) => {
+      if (call.table === "security_operation_locks") {
+        assert.equal(call.verb, "delete");
+        assert.deepEqual(call.filters, [["eq", "operation", `writeoff:${store1}`], ["eq", "token", "test-lease"]]);
+        leased = false;
+        return { error: null };
+      }
+      if (call.table === "writeoff_lists") {
+        assert(call.filters.some((filter) => filter[1] === "id" && filter[2] === store1));
+        if (call.verb === "update") {
+          status = call.payload.status;
+          return { data: { id: store1, status, finalized_at: call.payload.finalized_at }, error: null };
+        }
+        return { data: { id: store1, status, writeoff_list_items: item ? [item] : [] }, error: null };
+      }
+      assert.equal(call.table, "writeoff_list_items");
+      if (call.verb === "select") return { data: item ? [item] : [], error: null };
+      assert(leased, "Mutations must hold the same per-list lease as finalization");
+      assert.deepEqual(call.filters.slice(0, 2), [["eq", "id", objectId], ["eq", "writeoff_list_id", store1]]);
+      if (call.filters.find((filter) => filter[1] === "updated_at")?.[2] !== item?.updated_at) return { data: null, error: null };
+      if (call.verb === "update") {
+        mutationStarted?.();
+        await delayUpdate;
+        assert.deepEqual(Object.keys(call.payload).sort(), ["expiration_date", "quantity"]);
+        item = { ...item, ...call.payload, updated_at: v2 };
+        return { data: item, error: null };
+      }
+      const deleted = item;
+      item = null;
+      return { data: deleted, error: null };
+    });
+    service.rpc = async (name, args) => {
+      assert.equal(name, "claim_security_operation");
+      assert.equal(args.p_operation, `writeoff:${store1}`);
+      if (leased) return { data: null, error: null };
+      leased = true;
+      return { data: "test-lease", error: null };
+    };
+
+    const { load } = harness({ profile: admin, service });
+    const route = load("app/api/admin/popis-otpis/[id]/items/[itemId]/route.ts");
+    const list = load("app/api/admin/popis-otpis/[id]/route.ts");
+    const params = { params: Promise.resolve({ id: store1, itemId: objectId }) };
+    const mutate = (method, version, body) => route[method](new NextRequest("https://app.example/api/test", {
+      method, headers: { "Content-Type": "application/json", ...(version ? { "If-Match": `"${version}"` } : {}) },
+      body: body === undefined ? undefined : JSON.stringify(body)
+    }), params);
+    const edit = { quantity: 5.5, expiration_date: "2026-11-13", barcode: "forged", store_id: "forged", supplier_id: "forged" };
+    assert.equal((await mutate("PATCH", null, edit)).status, 400);
+    assert.equal((await mutate("PATCH", v1, { quantity: true })).status, 400);
+    assert.equal(service.calls.length, 0);
+    const firstRead = await route.GET(request(), params);
+    assert.equal(firstRead.headers.get("Cache-Control"), "private, no-store");
+    assert.equal((await firstRead.json()).item.updated_at, v1);
+    assert(service.calls[0].filters.some((filter) => filter[1] === "writeoff_list_items.id" && filter[2] === objectId));
+
+    let finish;
+    delayUpdate = new Promise((resolve) => { finish = resolve; });
+    const started = new Promise((resolve) => { mutationStarted = resolve; });
+    const editRequest = mutate("PATCH", v1, edit);
+    await Promise.race([started, editRequest.then((response) => { throw new Error(`Edit did not reach the fixture mutation (${response.status})`); })]);
+    assert.equal((await list.POST(request("POST"), params)).status, 409);
+    assert.equal((await mutate("DELETE", v1)).status, 409);
+    finish();
+    assert.equal((await editRequest).status, 200);
+    assert.deepEqual(item, { ...original, quantity: 5.5, expiration_date: "2026-11-13", updated_at: v2 });
+    assert.equal((await mutate("PATCH", v1, edit)).status, 409);
+    assert.equal((await mutate("DELETE", v1)).status, 409, "Stale delete must not remove the newer revision");
+    assert.equal((await mutate("DELETE", v2)).status, 200);
+    assert.equal((await mutate("DELETE", v2)).status, 200, "Already-deleted item is an idempotent success");
+    assert.equal((await route.GET(request(), params).then((result) => result.json())).item, null);
+    assert.equal((await mutate("PATCH", v2, edit)).status, 404);
+
+    item = { ...original };
+    assert.equal((await list.POST(request("POST"), params)).status, 200);
+    assert.equal((await mutate("PATCH", v1, edit)).status, 409);
+    assert.equal((await mutate("DELETE", v1)).status, 409);
+    assert.deepEqual(item, original);
+    assert.equal(leased, false);
   });
   await test("cross-site and sibling-origin requests denied; same-origin and non-browser allowed", () => {
     const { isSameOriginRequest } = harness().load("lib/security/request.ts");
@@ -537,7 +626,7 @@ async function main() {
     assert.ok(produce.includes("min-w-0 overflow-hidden") && produce.includes("minmax(0,1fr)"));
     assert.ok(tasks.includes("grid gap-4 lg:grid-cols-2") && !tasks.includes("min-w-["));
     assert.ok(returns.includes("overflow-x-auto") && returns.includes("sm:grid-cols-[1fr_auto]"));
-    assert.ok(dialog.includes("fixed inset-0") && dialog.includes("w-full max-w-md"));
+    assert.ok(dialog.includes("<dialog") && dialog.includes("showModal()") && dialog.includes("max-w-md"));
     for (const source of [pazarAndTemperature, produce, tasks, returns, dialog]) {
       assert.ok(!/min-w-\[(?:[5-9]\d\d|\d{4,})px\]/.test(source));
     }

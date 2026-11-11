@@ -88,10 +88,10 @@ export default async function BizniSoftPriceChangesPage({
   const totalCount = changesResult.count ?? changes.length;
 
   return (
-    <main className="page-fade space-y-6">
+    <div className="page-content">
       <header className="space-y-4">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">BizniSoft</p>
+          <p className="text-sm font-semibold uppercase text-slate-500">BizniSoft</p>
           <h1 className="text-2xl font-bold text-slate-950">Promene cena</h1>
           <p className="mt-1 text-sm text-slate-600">Poslednja provera: {lastCheck ? formatDateTime(lastCheck) : "-"}</p>
         </div>
@@ -111,10 +111,11 @@ export default async function BizniSoftPriceChangesPage({
       </header>
 
       <section className="space-y-3">
-        <div className="flex gap-2 overflow-x-auto pb-1">
+        <nav aria-label="Filter promena cena" className="flex flex-wrap gap-2">
           {filterOptions.map((option) => (
             <Link
-              className={`whitespace-nowrap rounded-full border px-3 py-2 text-sm font-semibold transition-all duration-200 ${
+              aria-current={activeFilter === option.key ? "page" : undefined}
+              className={`inline-flex min-h-11 items-center rounded-md border px-3 py-2 text-sm font-semibold transition-colors ${
                 activeFilter === option.key
                   ? "border-slate-950 bg-slate-950 text-white"
                   : "border-slate-200 bg-white text-slate-700 hover:border-slate-400"
@@ -125,18 +126,20 @@ export default async function BizniSoftPriceChangesPage({
               {option.label}
             </Link>
           ))}
-        </div>
+        </nav>
 
-        <form action="/admin/biznisoft-promene-cena" className="flex gap-2">
+        <form action="/admin/biznisoft-promene-cena" className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]" role="search">
           <input name="filter" type="hidden" value={activeFilter} />
           {selectedStorageKey ? <input name="storage_key" type="hidden" value={selectedStorageKey} /> : null}
           <input
+            aria-label="Naziv, šifra ili barkod artikla"
             className="input"
             defaultValue={searchParams.q ?? ""}
             name="q"
             placeholder="Naziv / šifra / barkod"
             type="search"
           />
+          <button className="button-secondary" type="submit">Pretraži</button>
         </form>
 
         <p className="text-sm text-slate-600">
@@ -162,7 +165,7 @@ export default async function BizniSoftPriceChangesPage({
         searchParams={searchParams}
         totalCount={totalCount}
       />
-    </main>
+    </div>
   );
 }
 

@@ -128,7 +128,7 @@ export function LoginForm({ initialMessage = "" }: { initialMessage?: string }) 
           value={password}
         />
       </label>
-      {error ? <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
+      {error ? <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{error}</p> : null}
       <button className="button-primary w-full" disabled={loading} type="submit">
         {loading ? "Prijavljivanje..." : "Prijava"}
       </button>

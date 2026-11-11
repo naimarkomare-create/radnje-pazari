@@ -18,7 +18,7 @@ textarea {
 }
 
 .field {
-  @apply flex flex-col gap-2;
+  @apply flex min-w-0 flex-col gap-2;
 }
 
 .label {
@@ -26,7 +26,12 @@ textarea {
 }
 
 .input {
-  @apply w-full rounded-md border border-slate-300 bg-white px-3 py-3 text-base text-slate-900 outline-none transition-all duration-200 ease-out focus:border-leaf focus:ring-2 focus:ring-leaf/20;
+  @apply min-w-0 w-full rounded-md border border-slate-300 bg-white px-3 py-3 text-base text-slate-900 outline-none transition-colors duration-150 focus:border-leaf focus:ring-2 focus:ring-leaf/20;
+}
+
+:where(a, button, [tabindex]):focus-visible {
+  outline: 2px solid #35652d;
+  outline-offset: 2px;
 }
 
 .button-primary {
@@ -42,8 +47,12 @@ textarea {
 }
 
 .page-content {
-  @apply mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6;
+  @apply mx-auto min-w-0 max-w-7xl space-y-6 break-words px-4 py-6 sm:px-6;
   animation: page-fade-in 220ms ease-out both;
+}
+
+.page-content.grid {
+  @apply space-y-0;
 }
 
 .report-row {
@@ -51,7 +60,7 @@ textarea {
 }
 
 .quantity-button {
-  @apply flex size-12 items-center justify-center rounded-md border border-slate-300 bg-white text-2xl font-bold text-slate-700 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-leaf hover:text-leaf hover:shadow-md active:translate-y-0 active:scale-[0.98] active:bg-slate-100;
+  @apply flex size-12 items-center justify-center rounded-md border border-slate-300 bg-white text-2xl font-bold text-slate-700 transition-colors duration-150 enabled:hover:border-leaf enabled:hover:text-leaf enabled:active:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50;
 }
 
 .interactive-card {

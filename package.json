@@ -8,7 +8,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "lint": "next lint",
-    "test": "npm run test:security && npm run test:writeoff-export && npm run test:writeoff-scanner && npm run test:writeoff-lookup",
+    "test": "npm run test:security && npm run test:writeoff-export && npm run test:writeoff-scanner && npm run test:writeoff-lookup && node scripts/ui-polish-tests.cjs",
     "test:writeoff-lookup": "node scripts/writeoff-lookup-tests.cjs",
     "test:security": "node scripts/security-tests.cjs",
     "test:production-security": "node scripts/production-security-smoke.mjs",

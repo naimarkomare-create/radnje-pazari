@@ -1,4 +1,11 @@
 import type { ProduceShelfPhotoCheck } from "@/lib/types";
+import { BELGRADE_TIME_ZONE } from "@/lib/date";
+
+const timeFormatter = new Intl.DateTimeFormat("sr-RS", {
+  timeZone: BELGRADE_TIME_ZONE,
+  hour: "2-digit",
+  minute: "2-digit"
+});
 
 export function ShelfPhotoGrid({
   photos,
@@ -45,8 +52,5 @@ export function ShelfPhotoGrid({
 }
 
 export function formatTime(value: string) {
-  return new Intl.DateTimeFormat("sr-RS", {
-    hour: "2-digit",
-    minute: "2-digit"
-  }).format(new Date(value));
+  return timeFormatter.format(new Date(value));
 }

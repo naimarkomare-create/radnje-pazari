@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useId, useRef } from "react";
+
 type ConfirmationDialogProps = {
   busy: boolean;
   confirmLabel: string;
@@ -19,38 +21,44 @@ export function ConfirmationDialog({
   open,
   title
 }: ConfirmationDialogProps) {
-  if (!open) return null;
+  const dialog = useRef<HTMLDialogElement>(null);
+  const id = useId();
+
+  useEffect(() => {
+    const element = dialog.current;
+    if (!element) return;
+    if (open && !element.open) element.showModal();
+    if (!open && element.open) element.close();
+  }, [open]);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/50 p-4 sm:items-center"
-      onKeyDown={(event) => {
-        if (event.key === "Escape" && !busy) onCancel();
+    <dialog
+      aria-describedby={`${id}-description`}
+      aria-labelledby={`${id}-title`}
+      className="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md rounded-lg bg-white p-0 shadow-xl backdrop:bg-slate-950/50"
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) onCancel();
       }}
       onMouseDown={(event) => {
         if (event.currentTarget === event.target && !busy) onCancel();
       }}
-      role="presentation"
+      ref={dialog}
     >
       <section
-        aria-describedby="return-delete-description"
-        aria-labelledby="return-delete-title"
-        aria-modal="true"
-        className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl"
-        role="dialog"
+        className="break-words p-5"
       >
-        <h2 className="text-lg font-bold text-slate-950" id="return-delete-title">
+        <h2 className="text-lg font-bold text-slate-950" id={`${id}-title`}>
           {title}
         </h2>
         <p
           className="mt-2 text-sm leading-6 text-slate-600"
-          id="return-delete-description"
+          id={`${id}-description`}
         >
           {description}
         </p>
         <div className="mt-5 grid grid-cols-2 gap-3">
           <button
-            autoFocus
             className="button-secondary"
             disabled={busy}
             onClick={onCancel}
@@ -68,6 +76,6 @@ export function ConfirmationDialog({
           </button>
         </div>
       </section>
-    </div>
+    </dialog>
   );
 }

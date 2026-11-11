@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import {
   submitDailyRevenue,
@@ -40,20 +40,12 @@ export function DailyRevenueForm({
     ? updateStoreDailyRevenue
     : submitDailyRevenue;
   const [state, action] = useFormState(actionHandler, initialState);
-  const [values, setValues] = useState<Record<RevenueFieldName, number>>({
-    cash_revenue: Number(report?.cash_revenue) || 0,
-    check_revenue: Number(report?.check_revenue) || 0,
-    card_revenue: Number(report?.card_revenue) || 0,
-    bank_transfer_revenue: Number(report?.bank_transfer_revenue) || 0,
-    correction_revenue: Number(report?.correction_revenue) || 0,
-    edopuna_revenue: Number(report?.edopuna_revenue) || 0
-  });
-  const total = useMemo(() => calculateRevenueTotal(values), [values]);
-
-  function updateValue(name: RevenueFieldName, value: string) {
-    const nextValue = value ? Number(value) : 0;
-    setValues((current) => ({ ...current, [name]: Number.isFinite(nextValue) ? nextValue : 0 }));
-  }
+  const [values, setValues] = useState(() => Object.fromEntries(
+    REVENUE_FIELDS.map(({ name }) => [name, String(Number(report?.[name]) || 0)])
+  ) as Record<RevenueFieldName, string>);
+  const total = calculateRevenueTotal(Object.fromEntries(
+    REVENUE_FIELDS.map(({ name }) => [name, Number(values[name]) || 0])
+  ) as Record<RevenueFieldName, number>);
 
   return (
     <form action={action} className={formClass}>
@@ -77,14 +69,20 @@ export function DailyRevenueForm({
       </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {REVENUE_FIELDS.map((field) => (
-          <NumberField
-            disabled={!canEdit}
-            key={field.name}
-            label={field.label}
-            name={field.name}
-            onValueChange={(value) => updateValue(field.name, value)}
-            value={values[field.name]}
-          />
+          <label className="field" key={field.name}>
+            <span className="label">{field.label}</span>
+            <input
+              className="input"
+              disabled={!canEdit}
+              inputMode="decimal"
+              min={field.name === "correction_revenue" ? undefined : 0}
+              name={field.name}
+              onChange={(event) => setValues({ ...values, [field.name]: event.target.value })}
+              step="0.01"
+              type="number"
+              value={values[field.name]}
+            />
+          </label>
         ))}
         <label className="field">
           <span className="label">Ukupno</span>
@@ -134,6 +132,19 @@ export function TemperatureForm({
 }) {
   const [state, action] = useFormState(submitTemperature, initialState);
   const [temperature, setTemperature] = useState("");
+  const [date, setDate] = useState(today);
+  const [shift, setShift] = useState("");
+  const [device, setDevice] = useState("");
+  const [note, setNote] = useState("");
+
+  useEffect(() => {
+    if (!state.ok) return;
+    setTemperature("");
+    setDate(today);
+    setShift("");
+    setDevice("");
+    setNote("");
+  }, [state, today]);
 
   function toggleTemperatureSign() {
     setTemperature((current) => {
@@ -150,11 +161,11 @@ export function TemperatureForm({
       <ReadOnlyStore storeName={storeName} />
       <label className="field">
         <span className="label">Datum</span>
-        <input className="input" defaultValue={today} name="report_date" required type="date" />
+        <input className="input" name="report_date" onChange={(event) => setDate(event.target.value)} required type="date" value={date} />
       </label>
       <label className="field">
         <span className="label">Smena</span>
-        <select className="input" name="shift" required>
+        <select className="input" name="shift" onChange={(event) => setShift(event.target.value)} required value={shift}>
           <option value="">Izaberite smenu</option>
           {TEMPERATURE_SLOTS.map((slot) => (
             <option key={slot.value} value={slot.value}>
@@ -165,7 +176,7 @@ export function TemperatureForm({
       </label>
       <label className="field">
         <span className="label">Naziv uređaja</span>
-        <select className="input" disabled={devices.length === 0} name="device_id" required>
+        <select className="input" disabled={devices.length === 0} name="device_id" onChange={(event) => setDevice(event.target.value)} required value={device}>
           <option value="">Izaberite uređaj</option>
           {devices.map((device) => (
             <option key={device.id} value={device.id}>
@@ -180,8 +191,8 @@ export function TemperatureForm({
           Nema aktivnih uređaja. Kontaktirajte admina.
         </p>
       ) : null}
-      <label className="field">
-        <span className="label">Temperatura (°C)</span>
+      <div className="field">
+        <label className="label" htmlFor="store-temperature">Temperatura (°C)</label>
         <span className="flex min-w-0 gap-2">
           <button
             aria-label="Promeni znak temperature"
@@ -194,6 +205,7 @@ export function TemperatureForm({
           <input
             autoComplete="off"
             className="input min-w-0 flex-1 text-lg font-semibold"
+            id="store-temperature"
             inputMode="decimal"
             name="temperature"
             onChange={(event) => setTemperature(event.target.value)}
@@ -203,10 +215,13 @@ export function TemperatureForm({
             value={temperature}
           />
         </span>
+      </div>
+      <label className="field">
+        <span className="label">Napomena</span>
+        <textarea className="input min-h-24 resize-y" name="note" onChange={(event) => setNote(event.target.value)} value={note} />
       </label>
-      <NoteField />
       <FormMessage state={state} />
-      <SubmitButton />
+      <SubmitButton disabled={devices.length === 0} label="Sačuvaj temperaturu" />
     </form>
   );
 }
@@ -237,7 +252,7 @@ function FormMessage({ state }: { state: ActionState }) {
   }
 
   return (
-    <p className={`rounded-md px-3 py-2 text-sm ${state.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+    <p className={`rounded-md px-3 py-2 text-sm ${state.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`} role={state.ok ? "status" : "alert"}>
       {state.message}
     </p>
   );
@@ -252,42 +267,6 @@ function ReadOnlyStore({ storeName }: { storeName: string }) {
   );
 }
 
-function NumberField({
-  label,
-  name,
-  required = false,
-  step = "0.01",
-  value,
-  onValueChange,
-  disabled = false
-}: {
-  disabled?: boolean;
-  label: string;
-  name: string;
-  required?: boolean;
-  step?: string;
-  value?: number;
-  onValueChange?: (value: string) => void;
-}) {
-  return (
-    <label className="field">
-      <span className="label">{label}</span>
-      <input
-        className="input"
-        defaultValue={onValueChange ? undefined : 0}
-        disabled={disabled}
-        min={label === "Temperatura" || name === "correction_revenue" ? undefined : 0}
-        name={name}
-        onChange={onValueChange ? (event) => onValueChange(event.target.value) : undefined}
-        required={required}
-        step={step}
-        type="number"
-        value={onValueChange ? value : undefined}
-      />
-    </label>
-  );
-}
-
 function NoteField({
   defaultValue,
   disabled = false
@@ -295,14 +274,16 @@ function NoteField({
   defaultValue?: string;
   disabled?: boolean;
 } = {}) {
+  const [note, setNote] = useState(defaultValue ?? "");
   return (
     <label className="field">
       <span className="label">Napomena</span>
       <textarea
         className="input min-h-24 resize-y"
-        defaultValue={defaultValue}
         disabled={disabled}
         name="note"
+        onChange={(event) => setNote(event.target.value)}
+        value={note}
       />
     </label>
   );

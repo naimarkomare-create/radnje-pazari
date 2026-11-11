@@ -28,6 +28,7 @@ export function StoreTasks({ assignments, storeId }: { assignments: StoreTaskAss
 
 function StoreTaskCard({ assignment, storeId }: { assignment: StoreTaskAssignment; storeId: string }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const submittingRef = useRef(false);
   const [loading, setLoading] = useState(false);
   const [state, setState] = useState<ActionState>({ ok: false, message: "" });
   const task = assignment.store_tasks;
@@ -39,10 +40,11 @@ function StoreTaskCard({ assignment, storeId }: { assignment: StoreTaskAssignmen
     dueTime: task.due_time,
     status: assignment.status
   });
-  const done = status === "done";
+  const done = status === "done" || state.ok;
 
   async function onComplete() {
-    if (!task) return;
+    if (!task || done || submittingRef.current) return;
+    submittingRef.current = true;
     setLoading(true);
     setState({ ok: false, message: "" });
 
@@ -70,7 +72,7 @@ function StoreTaskCard({ assignment, storeId }: { assignment: StoreTaskAssignmen
         });
 
         if (uploadError) {
-          setState({ ok: false, message: uploadError.message });
+          setState({ ok: false, message: "Slika nije otpremljena. Proverite vezu i pokušajte ponovo." });
           return;
         }
       }
@@ -78,9 +80,10 @@ function StoreTaskCard({ assignment, storeId }: { assignment: StoreTaskAssignmen
       const result = await completeStoreTask({ assignmentId: assignment.id, photoPath });
       setState(result);
       if (result.ok && fileRef.current) fileRef.current.value = "";
-    } catch (error) {
-      setState({ ok: false, message: error instanceof Error ? error.message : "Greška pri završavanju zadatka." });
+    } catch {
+      setState({ ok: false, message: "Zadatak nije sačuvan. Pokušajte ponovo." });
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   }
@@ -89,7 +92,7 @@ function StoreTaskCard({ assignment, storeId }: { assignment: StoreTaskAssignmen
     <article className="interactive-card rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex flex-wrap items-center gap-2">
         <span className={priorityClass(task.priority)}>{taskPriorityLabel(task.priority)}</span>
-        <span className={statusClass(status)}>{taskStatusLabel(status)}</span>
+        <span className={statusClass(done ? "done" : status)}>{taskStatusLabel(done ? "done" : status)}</span>
       </div>
       <h3 className="mt-3 text-lg font-bold text-ink">{task.title}</h3>
       {task.description ? <p className="mt-2 text-sm leading-6 text-slate-600">{task.description}</p> : null}
@@ -100,16 +103,16 @@ function StoreTaskCard({ assignment, storeId }: { assignment: StoreTaskAssignmen
       {task.photo_required && !done ? (
         <label className="field mt-4">
           <span className="label">Slika</span>
-          <input ref={fileRef} accept="image/*" capture="environment" className="input" type="file" />
+          <input ref={fileRef} accept="image/*" capture="environment" className="input" disabled={loading} type="file" />
         </label>
       ) : null}
       {state.message ? (
-        <p className={`mt-4 rounded-md px-3 py-3 text-sm ${state.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+        <p className={`mt-4 rounded-md px-3 py-3 text-sm ${state.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`} role={state.ok ? "status" : "alert"}>
           {state.message}
         </p>
       ) : null}
       <button className="button-primary mt-4 w-full sm:w-auto" disabled={loading || done} onClick={onComplete} type="button">
-        {done ? "Završeno" : loading ? "Čuvanje..." : "Završeno"}
+        {done ? "Završeno" : loading ? "Čuvanje..." : "Označi kao završeno"}
       </button>
     </article>
   );

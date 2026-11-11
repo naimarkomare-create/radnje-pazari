@@ -15,28 +15,16 @@ type SummaryRow = Omit<ReturnProposal, "return_proposal_items"> & {
 export default async function PovratiPage() {
   const profile = await requireStore();
   const supabase = createClient();
-  const [summariesResult, latestResult] = await Promise.all([
-    supabase
-      .from("return_proposals")
-      .select(
-        `${RETURN_PROPOSAL_COLUMNS}, stores(id, name), return_proposal_items(supplier_name)`
-      )
-      .eq("store_id", profile.store_id)
-      .order("updated_at", { ascending: false })
-      .limit(20),
-    supabase
-      .from("return_proposals")
-      .select(`${RETURN_PROPOSAL_COLUMNS}, stores(id, name)`)
-      .eq("store_id", profile.store_id)
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle()
-  ]);
+  const summariesResult = await supabase
+    .from("return_proposals")
+    .select(`${RETURN_PROPOSAL_COLUMNS}, stores(id, name), return_proposal_items(supplier_name)`)
+    .eq("store_id", profile.store_id)
+    .order("updated_at", { ascending: false })
+    .limit(20);
 
   if (summariesResult.error) throw new Error(summariesResult.error.message);
-  if (latestResult.error) throw new Error(latestResult.error.message);
-
-  const latest = latestResult.data as unknown as ReturnProposal | null;
+  const proposals = (summariesResult.data ?? []) as unknown as SummaryRow[];
+  const latest = proposals[0];
   const itemsResult = latest
     ? await supabase
         .from("return_proposal_items")
@@ -48,7 +36,7 @@ export default async function PovratiPage() {
 
   if (itemsResult?.error) throw new Error(itemsResult.error.message);
 
-  const summaries = ((summariesResult.data ?? []) as unknown as SummaryRow[]).map(
+  const summaries = proposals.map(
     (proposal): ReturnProposalSummary => {
       const summaryItems = proposal.return_proposal_items ?? [];
       return {
