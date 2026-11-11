@@ -223,6 +223,32 @@ Iste promenljive dodajte u Vercel:
 
 BizniSoft promenljive i sve tajne su server-only. `BIZNISOFT_PASSWORD` je opciona promenljiva: kada nedostaje ili je prazna, SOAP prijava dobija tačno prazan string. `BIZNISOFT_USERNAME` ostaje obavezan. Ostavite `AUTO_CREATE_PRICE_TASKS=false` dok posebno ne odobrite automatsko pravljenje zadataka. Lokalni discovery skriptovi mogu dodatno koristiti opcioni `BIZNISOFT_SOAP_BASE_URL`; aplikacija u produkciji ga ne koristi.
 
+## Obaveštenja za zadatke
+
+Za opciju **Pošalji notifikaciju na telefon** potrebna je migracija
+`20261111120000_task_web_push.sql`. Ona čuva pretplate samo na serveru i
+sprečava da ponavljanje istog obrasca ponovo kreira zadatak ili pošalje obaveštenje.
+
+Generišite jedan VAPID par pomoću `npx web-push generate-vapid-keys` i unesite
+`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` i `VAPID_SUBJECT` u Vercel okruženje
+(`VAPID_SUBJECT`, na primer, `mailto:admin@example.com`). Ne objavljujte privatni
+ključ i ne menjajte par pri svakom deploy-u. Promena para zahteva ponovnu prijavu uređaja.
+
+Na Android telefonu zaposleni otvara aplikaciju preko HTTPS-a, prijavljuje se
+i na **Početnoj** bira **Uključi obaveštenja**, pa potvrđuje dozvolu u pregledaču.
+Samo zadaci poslati sa označenom opcijom mogu proizvesti obaveštenje. Klik na
+obaveštenje otvara konkretan zadatak ako je dodeljen prijavljenoj radnji.
+
+Podržani su Web Push servisi Chrome/Chromium (FCM) i Firefox. Instalacija PWA nije
+uslov za Chrome na Androidu. Novi service worker nema offline režim niti kešira
+stranice. Isporuka u pozadini zavisi od dozvola i podešavanja uređaja; ne računajte
+na isporuku dok je pregledač prinudno zaustavljen. Na deljenom uređaju koristite
+**Isključi obaveštenja** pre predaje telefona drugom korisniku.
+
+Slanje je jednokratno i odvojeno od čuvanja zadatka. Prihvaćena poruka kod push
+servisa nije potvrda prikaza na telefonu. Proverite dozvolu, zatvoren Chrome i
+otvaranje zadatka na jednom odobrenom test telefonu pre šire upotrebe.
+
 ## Cleanup starih slika
 
 Aplikacija ima API rutu:

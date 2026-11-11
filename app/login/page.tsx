@@ -1,17 +1,20 @@
 import { redirect } from "next/navigation";
 import { dashboardPathFor, getCurrentProfile } from "@/lib/auth";
 import { LoginForm } from "@/app/login/LoginForm";
+import { isUuid } from "@/lib/security/validation";
 
 export default async function LoginPage({
   searchParams: searchParamsPromise
 }: {
-  searchParams?: Promise<{ reason?: string }>;
+  searchParams?: Promise<{ reason?: string; task?: string }>;
 }) {
   const searchParams = searchParamsPromise ? await searchParamsPromise : undefined;
   const profile = await getCurrentProfile();
+  const taskId = isUuid(searchParams?.task) ? searchParams.task : undefined;
 
   if (profile) {
-    redirect(dashboardPathFor(profile));
+    const destination = dashboardPathFor(profile);
+    redirect(destination === "/store" && taskId ? `/store?task=${taskId}#task-${taskId}` : destination);
   }
 
   return (
@@ -22,6 +25,7 @@ export default async function LoginPage({
           <h1 className="mt-2 text-3xl font-bold text-ink">Prijava</h1>
         </div>
         <LoginForm
+          taskId={taskId}
           initialMessage={
             searchParams?.reason === "session_expired"
               ? "Sesija je istekla. Prijavite se ponovo."

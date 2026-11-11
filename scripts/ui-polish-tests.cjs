@@ -250,6 +250,88 @@ async function main() {
     }
   }
   console.log("PASS shelf timestamps use Serbian winter/summer time independently of the server timezone");
+
+  const mockTaskAction = { createStoreTask: noop };
+  const taskForm = harness({ "@/app/admin/zadaci/actions": mockTaskAction });
+  const { AdminTaskForm } = taskForm.load("app/admin/zadaci/AdminTaskForm.tsx");
+  const renderedTaskForm = taskForm.render(AdminTaskForm, { stores: [], today, initialRequestId: "fixture-id" });
+  assert.equal(field(renderedTaskForm, "send_notification").type, "checkbox");
+  assert(!field(renderedTaskForm, "send_notification").checked && !field(renderedTaskForm, "send_notification").defaultChecked);
+  assert.equal(field(renderedTaskForm, "photo_required").type, "checkbox");
+  assert.equal(field(renderedTaskForm, "task_request_id").value, "fixture-id");
+
+  let prompts = 0;
+  let registered = 0;
+  let unsubscribed = 0;
+  let permission = "denied";
+  let subscription = null;
+  const registration = { pushManager: {
+    getSubscription: async () => subscription,
+    subscribe: async (options) => {
+      assert.equal(options.userVisibleOnly, true);
+      assert.equal(options.applicationServerKey.length, 65);
+      subscription = { toJSON: () => ({ endpoint: "https://fcm.googleapis.com/fcm/send/fixture" }), unsubscribe: async () => { unsubscribed++; } };
+      return subscription;
+    }
+  } };
+  const notification = { permission: "default", requestPermission: async () => { prompts++; return permission; } };
+  const registrationCalls = [];
+  const push = harness({}, {
+    window: { isSecureContext: true, PushManager: {}, Notification: notification },
+    navigator: { serviceWorker: { register: async (_path, options) => { assert.equal(options.scope, "/store"); registered++; }, ready: Promise.resolve(registration), getRegistration: async () => registration } },
+    Notification: notification, AbortSignal, atob, setTimeout, clearTimeout,
+    fetch: async (url, options) => { registrationCalls.push([url, options.method]); return { ok: true }; }
+  });
+  const { TaskPushControl } = push.load("app/store/TaskPushControl.tsx");
+  const pushControl = () => push.render(TaskPushControl, { publicKey: `B${"p".repeat(86)}` });
+  const pushButton = () => nodes(pushControl()).find((node) => node.type === "button");
+  pushControl();
+  assert.equal(prompts, 0, "Mount must never request permission");
+  assert.equal(registered, 0);
+  await pushButton().props.onClick();
+  assert.equal(prompts, 1);
+  assert.equal(registrationCalls.length, 0, "Denied permission does not register a device");
+  assert.equal(registered, 0);
+  permission = "granted";
+  await pushButton().props.onClick();
+  assert.equal(pushButton().props.children, "Isključi obaveštenja");
+  assert.equal(registered, 1);
+  await pushButton().props.onClick();
+  assert.equal(unsubscribed, 1);
+  assert.deepEqual(registrationCalls, [["/api/store/task-push", "POST"], ["/api/store/task-push", "DELETE"]]);
+  console.log("PASS task notification checkbox is independent and unchecked; permission requires an explicit click; deny, enable and disable use only local mocks");
+
+  const linkedId = "44444444-4444-4444-8444-444444444444";
+  const assignment = { task_id: linkedId, store_id: "store-1", store_tasks: { due_date: "2026-11-12", active: true } };
+  const taskReads = [];
+  const dashboard = harness({
+    "@/lib/auth": { requireStore: async () => ({ store_id: "store-1" }) },
+    "@/app/store/StoreTasks": { StoreTasks: noop },
+    "@/lib/task-push-config": { getTaskPushConfig: () => null },
+    "@/lib/supabase/server": { createClient: () => ({ from(table) {
+      const filters = new Map();
+      const query = { select: () => query, order: () => query, maybeSingle: () => query,
+        eq(column, value) { filters.set(column, value); return query; },
+        then(resolve) {
+          if (table === "store_task_assignments" && filters.has("task_id")) {
+            taskReads.push(filters);
+            return resolve({ data: assignment.store_id === filters.get("store_id") ? assignment : null, error: null });
+          }
+          return resolve({ data: [], count: 0, error: null });
+        }
+      };
+      return query;
+    } }) }
+  });
+  const page = dashboard.load("app/store/page.tsx").default;
+  const openTask = () => page({ searchParams: Promise.resolve({ task: linkedId }) });
+  assert(nodes(await openTask()).some((node) => node.props.fromNotification && node.props.assignments[0] === assignment));
+  assert.equal(taskReads[0].get("store_id"), "store-1");
+  assert.equal(taskReads[0].get("task_id"), linkedId);
+  assert.equal(taskReads[0].get("store_tasks.active"), true);
+  assignment.store_id = "store-2";
+  assert(!nodes(await openTask()).some((node) => node.props.fromNotification));
+  console.log("PASS notification deep link opens an assigned future task, not another store's task");
 }
 
 main().catch((error) => { console.error(error); process.exitCode = 1; });

@@ -1,6 +1,7 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { authCookieOptions } from "@/lib/supabase/cookie-options";
+import { isUuid } from "@/lib/security/validation";
 import {
   isConfirmedInvalidSessionError,
   isSupabaseAuthCookieName
@@ -118,6 +119,8 @@ function redirectToLogin({
   const loginUrl = request.nextUrl.clone();
   loginUrl.pathname = "/login";
   loginUrl.search = sessionExpired ? "?reason=session_expired" : "";
+  const taskId = request.nextUrl.searchParams.get("task");
+  if (request.nextUrl.pathname === "/store" && isUuid(taskId)) loginUrl.searchParams.set("task", taskId);
 
   const redirectResponse = NextResponse.redirect(loginUrl);
 

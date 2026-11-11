@@ -1,6 +1,6 @@
 "use server";
 
-import { actionError, publicErrorMessage } from "@/lib/security/validation";
+import { actionError, isUuid, publicErrorMessage } from "@/lib/security/validation";
 
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
@@ -11,12 +11,13 @@ import { createServiceClient } from "@/lib/supabase/service";
 import type { ActionState, TaskPriority } from "@/lib/types";
 
 const priorities: TaskPriority[] = ["podsetnik", "vazno", "hitno"];
+export type TaskCreationState = ActionState & { notification?: { warning: boolean; message: string } };
 
 function getText(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
 }
 
-export async function createStoreTask(_previousState: ActionState, formData: FormData): Promise<ActionState> {
+export async function createStoreTask(_previousState: TaskCreationState, formData: FormData): Promise<TaskCreationState> {
   try {
     const profile = await requireAdmin();
     const title = getText(formData, "title");
@@ -25,11 +26,14 @@ export async function createStoreTask(_previousState: ActionState, formData: For
     const priority = getText(formData, "priority") as TaskPriority;
     const selectedStoreIds = formData.getAll("store_ids").map(String).filter(Boolean);
     const allStores = getText(formData, "all_stores") === "on";
+    const sendNotification = getText(formData, "send_notification") === "on";
+    const requestId = getText(formData, "task_request_id");
 
     if (!title) return { ok: false, message: "Naslov zadatka je obavezan." };
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) return { ok: false, message: "Rok datum nije ispravan." };
     if (dueTime && !/^\d{2}:\d{2}$/.test(dueTime)) return { ok: false, message: "Rok vreme nije ispravno." };
     if (!priorities.includes(priority)) return { ok: false, message: "Oznaka nije ispravna." };
+    if (sendNotification && !isUuid(requestId)) return { ok: false, message: "Ponovo učitajte obrazac za zadatak." };
 
     const supabase = createClient();
     const storesQuery = supabase.from("stores").select("id, name").in("name", [...PRODUCE_STORE_NAMES]);
@@ -40,6 +44,32 @@ export async function createStoreTask(_previousState: ActionState, formData: For
 
     if (storesResult.error) return { ok: false, message: publicErrorMessage(storesResult.error) };
     if (stores.length === 0) return { ok: false, message: "Izaberite najmanje jednu radnju." };
+
+    if (sendNotification) {
+      const storeIds = stores.map((store) => store.id);
+      const { data: created, error } = await supabase.rpc("create_notified_store_task", {
+        p_id: requestId,
+        p_title: title,
+        p_description: getText(formData, "description") || null,
+        p_due_date: dueDate,
+        p_due_time: dueTime,
+        p_priority: priority,
+        p_photo_required: getText(formData, "photo_required") === "on",
+        p_store_ids: storeIds
+      });
+      if (error || typeof created !== "boolean") return { ok: false, message: "Čuvanje zadatka nije potvrđeno. Pokušajte ponovo iz istog obrasca." };
+      revalidatePath("/admin/zadaci");
+      revalidatePath("/store");
+      if (!created) return { ok: true, message: "Zadatak je već sačuvan.", notification: { warning: true, message: "Obaveštenje nije poslato ponovo." } };
+
+      try {
+        const { notifyTaskStores } = await import("@/lib/task-push");
+        const notification = await notifyTaskStores(requestId, title, storeIds);
+        return { ok: true, message: "Zadatak je poslat.", notification };
+      } catch {
+        return { ok: true, message: "Zadatak je poslat.", notification: { warning: true, message: "Slanje obaveštenja nije potvrđeno. Zadatak je dostupan u aplikaciji." } };
+      }
+    }
 
     const { data: task, error: taskError } = await supabase
       .from("store_tasks")

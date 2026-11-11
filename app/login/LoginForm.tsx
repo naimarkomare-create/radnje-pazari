@@ -3,7 +3,7 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
-export function LoginForm({ initialMessage = "" }: { initialMessage?: string }) {
+export function LoginForm({ initialMessage = "", taskId }: { initialMessage?: string; taskId?: string }) {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -78,7 +78,7 @@ export function LoginForm({ initialMessage = "" }: { initialMessage?: string }) 
         profile.role === "admin" && profile.store_id === null
           ? "/admin"
           : profile.role === "store" && typeof profile.store_id === "string" && profile.store_id
-            ? "/store"
+              ? taskId ? `/store?task=${encodeURIComponent(taskId)}#task-${encodeURIComponent(taskId)}` : "/store"
             : null;
 
       if (!destination) {

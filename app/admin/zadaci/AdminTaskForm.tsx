@@ -1,21 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
-import { createStoreTask } from "@/app/admin/zadaci/actions";
+import { createStoreTask, type TaskCreationState } from "@/app/admin/zadaci/actions";
 import { TASK_PRIORITIES, taskPriorityLabel } from "@/lib/tasks";
-import type { ActionState, Store } from "@/lib/types";
+import type { Store } from "@/lib/types";
 
-const initialState: ActionState = { ok: false, message: "" };
+const initialState: TaskCreationState = { ok: false, message: "" };
 
-export function AdminTaskForm({ stores, today }: { stores: Store[]; today: string }) {
+export function AdminTaskForm({ stores, today, initialRequestId }: { stores: Store[]; today: string; initialRequestId: string }) {
   const [state, formAction] = useFormState(createStoreTask, initialState);
   const [allStores, setAllStores] = useState(true);
+  const [requestId, setRequestId] = useState(initialRequestId);
+  const [sendNotification, setSendNotification] = useState(false);
+
+  useEffect(() => {
+    if (state.ok) {
+      setRequestId(crypto.randomUUID());
+      setSendNotification(false);
+    }
+  }, [state]);
 
   return (
     <section className="interactive-card rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
       <h2 className="text-lg font-bold text-ink">Novi zadatak</h2>
       <form action={formAction} className="mt-4 space-y-4">
+        <input name="task_request_id" type="hidden" value={requestId} />
         <fieldset className="space-y-3">
           <legend className="label">Radnje</legend>
           <label className="flex items-center gap-3 rounded-md bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-700">
@@ -70,9 +80,19 @@ export function AdminTaskForm({ stores, today }: { stores: Store[]; today: strin
           Slika obavezna
         </label>
 
+        <label className="flex items-center gap-3 rounded-md bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-700">
+          <input checked={sendNotification} name="send_notification" onChange={(event) => setSendNotification(event.target.checked)} type="checkbox" />
+          Pošalji notifikaciju na telefon
+        </label>
+
         {state.message ? (
           <p className={`rounded-md px-3 py-3 text-sm ${state.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
             {state.message}
+          </p>
+        ) : null}
+        {state.notification ? (
+          <p className={`rounded-md px-3 py-3 text-sm ${state.notification.warning ? "bg-amber-50 text-amber-800" : "bg-green-50 text-green-700"}`} role="status">
+            {state.notification.message}
           </p>
         ) : null}
 

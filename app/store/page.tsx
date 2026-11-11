@@ -1,10 +1,12 @@
-import { dataErrorMessage } from "@/lib/security/validation";
+import { dataErrorMessage, isUuid } from "@/lib/security/validation";
 import Link from "next/link";
 import { StoreTasks } from "@/app/store/StoreTasks";
+import { TaskPushControl } from "@/app/store/TaskPushControl";
 import { PageHeader } from "@/components/PageHeader";
 import { requireStore } from "@/lib/auth";
 import { todayInBelgrade } from "@/lib/date";
 import { createClient } from "@/lib/supabase/server";
+import { getTaskPushConfig } from "@/lib/task-push-config";
 import type { StoreTaskAssignment } from "@/lib/types";
 
 const actions = [
@@ -35,30 +37,33 @@ const actions = [
   }
 ];
 
-export default async function StoreDashboardPage() {
+export default async function StoreDashboardPage({ searchParams }: { searchParams?: Promise<{ task?: string }> }) {
   const profile = await requireStore();
   const supabase = createClient();
   const today = todayInBelgrade();
   const storeId = profile.store_id ?? "";
+  const requestedTask = (await searchParams)?.task;
+  const linkedTaskId = isUuid(requestedTask) ? requestedTask : null;
+  const publicKey = getTaskPushConfig()?.publicKey;
+  const assignmentsQuery = () => supabase.from("store_task_assignments")
+    .select("id, task_id, store_id, status, completed_at, store_tasks!inner(id, title, description, due_date, due_time, priority, photo_required, active)")
+    .eq("store_id", storeId).eq("store_tasks.active", true);
 
-  const [daily, temperatures, produce, todayRevenue, todayTemperature, todayShelfPhoto, taskAssignmentsResult] = await Promise.all([
+  const [daily, temperatures, produce, todayRevenue, todayTemperature, todayShelfPhoto, taskAssignmentsResult, linkedTaskResult] = await Promise.all([
     supabase.from("daily_revenue_reports").select("id", { count: "exact", head: true }).eq("store_id", storeId),
     supabase.from("temperature_reports").select("id", { count: "exact", head: true }).eq("store_id", storeId),
     supabase.from("produce_request_batches").select("id", { count: "exact", head: true }).eq("store_id", storeId),
     supabase.from("daily_revenue_reports").select("id", { count: "exact", head: true }).eq("store_id", storeId).eq("report_date", today),
     supabase.from("temperature_reports").select("id", { count: "exact", head: true }).eq("store_id", storeId).eq("report_date", today),
     supabase.from("produce_shelf_photo_checks").select("id", { count: "exact", head: true }).eq("store_id", storeId).eq("check_date", today),
-    supabase
-      .from("store_task_assignments")
-      .select(
-        "id, task_id, store_id, status, completed_at, store_tasks!inner(id, title, description, due_date, due_time, priority, photo_required, active)"
-      )
-      .eq("store_id", storeId)
+    assignmentsQuery()
       .eq("store_tasks.due_date", today)
-      .eq("store_tasks.active", true)
-      .order("created_at", { ascending: true })
+      .order("created_at", { ascending: true }),
+    linkedTaskId ? assignmentsQuery().eq("task_id", linkedTaskId).maybeSingle() : null
   ]);
   const taskAssignments = (taskAssignmentsResult.data ?? []) as unknown as StoreTaskAssignment[];
+  const linkedTask = linkedTaskResult?.data as unknown as StoreTaskAssignment | undefined;
+  const showLinkedTask = linkedTask && !taskAssignments.some((assignment) => assignment.task_id === linkedTask.task_id);
   const reminders = [
     { href: "/store/pazari", title: "Pošalji pazar", visible: (todayRevenue.count ?? 0) === 0 },
     { href: "/store/temperature", title: "Pošalji temperaturu", visible: (todayTemperature.count ?? 0) === 0 },
@@ -73,7 +78,14 @@ export default async function StoreDashboardPage() {
         title="Početna"
       />
       <div className="page-content">
+        {showLinkedTask ? <StoreTasks assignments={[linkedTask]} storeId={storeId} fromNotification /> : null}
+        {linkedTaskId && !linkedTask ? (
+          <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900" role="status">
+            {linkedTaskResult?.error ? "Zadatak trenutno nije moguće učitati." : "Zadatak nije dostupan ovoj radnji."}
+          </p>
+        ) : null}
         <StoreTasks assignments={taskAssignments} storeId={storeId} />
+        {publicKey ? <TaskPushControl publicKey={publicKey} /> : null}
         {taskAssignmentsResult.error ? (
           <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{dataErrorMessage(taskAssignmentsResult.error)}</p>
         ) : null}

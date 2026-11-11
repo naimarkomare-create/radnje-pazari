@@ -27,7 +27,8 @@ const realLibraries = new Set([
   "lib/security/sync-lock.ts", "lib/return-proposals.ts", "lib/date.ts", "lib/pagination.ts",
   "lib/revenue.ts", "lib/temperature-slots.ts", "lib/shelf-photos.ts", "lib/tasks.ts",
   "lib/biznisoft/soap-client.ts", "lib/biznisoft/sync-suppliers.ts", "lib/excel-templates.ts", "lib/produce.ts",
-  "lib/temperature-bulk-export.ts", "lib/supabase/auth-errors.ts", "lib/popis-otpis.ts", "lib/writeoff-list-lock.ts"
+  "lib/temperature-bulk-export.ts", "lib/supabase/auth-errors.ts", "lib/popis-otpis.ts", "lib/writeoff-list-lock.ts",
+  "lib/task-push-config.ts", "lib/task-push.ts"
 ]);
 
 // Load actual TS handlers, replacing only their external boundaries, never making real requests.
@@ -54,6 +55,7 @@ function harness(options = {}) {
     cache.set(file, module);
     const localRequire = (specifier) => {
       if (specifier === "server-only") return {};
+      if (specifier === "web-push") return options.webPush || forbiddenModule;
       if (specifier === "next/server") return { NextRequest, NextResponse };
       if (specifier === "next/headers") return { headers: () => headers };
       if (specifier === "next/cache") return { revalidatePath: () => {} };
@@ -75,7 +77,7 @@ function harness(options = {}) {
     } }).outputText;
     const context = {
       module, exports: module.exports, require: localRequire, Buffer, URL, Headers, Request, Response, Error,
-      FormData, AbortController, setTimeout, clearTimeout, Uint8Array, ArrayBuffer,
+      FormData, AbortController, AbortSignal, setTimeout, clearTimeout, Uint8Array, ArrayBuffer,
       process: { env: options.env || {}, cwd: () => root },
       console: options.console || console,
       fetch: options.fetch || failCall
@@ -94,7 +96,7 @@ function database(resolver) {
     const chain = new Proxy({}, { get(_, key) {
       if (key === "then") return (resolve, reject) => Promise.resolve(resolver(call)).then(resolve, reject);
       return (...args) => {
-        if (["insert", "update", "delete"].includes(key)) { call.verb = key; call.payload = args[0]; }
+        if (["insert", "upsert", "update", "delete"].includes(key)) { call.verb = key; call.payload = args[0]; }
         if (["eq", "in", "gte", "lte"].includes(key)) call.filters.push([key, ...args]);
         return chain;
       };
@@ -248,6 +250,133 @@ async function main() {
     ]) assert.equal(isSameOriginRequest(new Headers(input)), false);
     assert.equal(isSameOriginRequest(new Headers({ host: "app.example", origin: "https://app.example" })), true);
     assert.equal(isSameOriginRequest(new Headers({ host: "app.example" })), true);
+  });
+  await test("push registration is store-only, bound to the current user and store, and blocks arbitrary endpoints", async () => {
+    const env = { NODE_ENV: "production", VAPID_PUBLIC_KEY: `B${"p".repeat(86)}`, VAPID_PRIVATE_KEY: "v".repeat(43), VAPID_SUBJECT: "mailto:ops@example.test" };
+    const file = "app/api/store/task-push/route.ts";
+    const subscription = { endpoint: "https://fcm.googleapis.com/fcm/send/test-device", keys: { p256dh: env.VAPID_PUBLIC_KEY, auth: "a".repeat(22) }, store_id: store2, user_id: user2 };
+    for (const [profile, status] of [[null, 401], [admin, 403]]) {
+      const route = harness({ profile, env }).load(file);
+      for (const method of ["GET", "POST", "DELETE"]) {
+        assert.equal((await route[method](request(method, method === "POST" ? subscription : undefined))).status, status);
+      }
+    }
+    const service = database(() => ({ data: { id: objectId }, error: null }));
+    const route = harness({ profile: worker, env, service }).load(file);
+    for (const endpoint of ["http://127.0.0.1:8080", "https://fcm.googleapis.com.evil.test/fcm/send/test", "https://fcm.googleapis.com@evil.test/fcm/send/test", "https://fcm.googleapis.com:8080/fcm/send/test", "https://fcm.googleapis.com/admin"]) {
+      assert.equal((await route.POST(request("POST", { ...subscription, endpoint }))).status, 400);
+    }
+    assert.equal(service.calls.length, 0);
+    const enabled = await route.POST(request("POST", subscription));
+    assert.equal(enabled.status, 200);
+    assert.deepEqual(await enabled.json(), { enabled: true });
+    assert.match(enabled.headers.get("set-cookie"), /HttpOnly/i);
+    assert.match(enabled.headers.get("set-cookie"), /Secure/i);
+    assert.equal(service.calls[0].verb, "upsert");
+    assert.equal(service.calls[0].payload.store_id, store1);
+    assert.equal(service.calls[0].payload.user_id, user1);
+    const deviceRequest = (method) => new NextRequest("https://app.example/api/store/task-push", { method, headers: { cookie: `task-push-device=${objectId}` } });
+    assert.deepEqual(await (await route.GET(deviceRequest("GET"))).json(), { enabled: true });
+    assert.deepEqual(service.calls[1].filters, [["eq", "id", objectId], ["eq", "user_id", user1], ["eq", "store_id", store1]]);
+    assert.equal((await route.DELETE(deviceRequest("DELETE"))).status, 200);
+    assert.deepEqual(service.calls[2].filters, [["eq", "id", objectId], ["eq", "user_id", user1]]);
+  });
+  await test("task push targets confirmed assignments, deduplicates retries and reports failures after saving", async () => {
+    const env = { VAPID_PUBLIC_KEY: `B${"p".repeat(86)}`, VAPID_PRIVATE_KEY: "v".repeat(43), VAPID_SUBJECT: "mailto:ops@example.test" };
+    const persisted = new Set();
+    const db = database((call) => call.table === "stores"
+      ? { data: [{ id: store1, name: "Radnja 1" }], error: null }
+      : { data: { id: objectId }, error: null });
+    db.rpc = async (name, args) => {
+      assert.equal(name, "create_notified_store_task");
+      assert.deepEqual(Array.from(args.p_store_ids), [store1]);
+      assert.equal(args.p_photo_required, true);
+      assert.equal(args.p_description, "Opis");
+      assert.equal(args.p_due_time, "15:30");
+      if (persisted.has(args.p_id)) return { data: false, error: null };
+      persisted.add(args.p_id);
+      return { data: true, error: null };
+    };
+    const row = { id: objectId, endpoint: "https://fcm.googleapis.com/fcm/send/test-good", auth: "a".repeat(22), p256dh: env.VAPID_PUBLIC_KEY, user_id: user1, store_id: store1, profiles: { role: "store", store_id: store1 } };
+    const rows = [row, { ...row, endpoint: "https://fcm.googleapis.com/fcm/send/test-expired" },
+      { ...row, endpoint: "https://fcm.googleapis.com/fcm/send/other-store", store_id: store2, profiles: { role: "store", store_id: store2 } },
+      { ...row, endpoint: "https://fcm.googleapis.com/fcm/send/reassigned", profiles: { role: "store", store_id: store2 } },
+      { ...row, endpoint: "https://fcm.googleapis.com/fcm/send/not-store", profiles: { role: "admin", store_id: null } }];
+    const service = database((call) => {
+      if (call.verb === "delete") return { error: null };
+      assert.deepEqual(Array.from(call.filters[0][2]), [store1]);
+      return { data: rows, count: rows.length, error: null };
+    });
+    const sends = [];
+    const webPush = { generateRequestDetails(subscription, payload, options) {
+      const message = JSON.parse(payload);
+      assert(persisted.has(message.taskId), "Notifications must follow committed task creation");
+      assert.equal(message.title, "Novi zadatak");
+      assert.equal(message.body, "Proveri policu");
+      assert.match(options.topic, /^[0-9a-f]{32}$/i);
+      return { endpoint: subscription.endpoint, method: "POST", headers: {}, body: Buffer.from("fixture-only") };
+    } };
+    const file = "app/admin/zadaci/actions.ts";
+    const action = harness({ profile: admin, env, db, service, webPush, fetch: async (url, init) => {
+      sends.push(url);
+      assert.equal(init.redirect, "error");
+      return new Response(null, { status: url.endsWith("expired") ? 410 : 201 });
+    } }).load(file).createStoreTask;
+    const form = new FormData();
+    for (const [key, value] of Object.entries({ title: "Proveri policu", description: "Opis", due_date: "2026-11-12", due_time: "15:30", priority: "hitno", photo_required: "on", store_ids: store1, task_request_id: objectId })) form.set(key, value);
+    const idle = { ok: false, message: "" };
+    const ordinary = await action(idle, form);
+    assert.equal(ordinary.ok, true);
+    assert.equal(ordinary.notification, undefined);
+    assert.equal(persisted.size, 0);
+    assert.equal(service.calls.length, 0);
+    assert.equal(sends.length, 0);
+    form.set("send_notification", "on");
+    assert.equal((await harness({ profile: worker }).load(file).createStoreTask(idle, form)).ok, false);
+    const created = await action(idle, form);
+    assert.equal(created.ok, true);
+    assert.equal(created.notification.warning, true);
+    assert.match(created.notification.message, /prihvatio.*1 uređaj.*nije potvrđeno za 1/);
+    assert.deepEqual(sends, [rows[0].endpoint, rows[1].endpoint]);
+    assert(service.calls.some((call) => call.verb === "delete" && call.filters.some(([, key, value]) => key === "endpoint" && value === rows[1].endpoint)));
+    assert.match((await action(idle, form)).notification.message, /nije poslato ponovo/);
+    assert.equal(persisted.size, 1);
+    assert.equal(sends.length, 2);
+
+    form.set("task_request_id", user2);
+    const failed = await harness({ profile: admin, env, db, service: database(() => ({ error: { message: "sensitive detail" } })), webPush }).load(file).createStoreTask(idle, form);
+    assert.equal(failed.ok, true);
+    assert.equal(failed.notification.warning, true);
+    assert.doesNotMatch(failed.notification.message, /sensitive detail/);
+    assert(persisted.has(user2));
+
+    const migration = read("supabase/migrations/20261111120000_task_web_push.sql");
+    assert.match(migration, /revoke all on public\.task_push_subscriptions from public, anon, authenticated/);
+    assert.match(migration, /security invoker[\s\S]*auth\.uid\(\) is null or not coalesce\(public\.is_admin\(\), false\)/);
+    assert.match(migration, /on conflict \(id\) do nothing[\s\S]*return false;[\s\S]*insert into public\.store_task_assignments/);
+  });
+  await test("push worker displays task messages and opens only same-origin task links", async () => {
+    const events = new Map();
+    const notifications = [];
+    const opened = [];
+    const self = {
+      location: { origin: "https://app.example" },
+      registration: { showNotification: async (title, options) => { notifications.push({ title, options }); } },
+      clients: { matchAll: async () => [], openWindow: async (url) => { opened.push(url); } },
+      addEventListener: (event, handler) => events.set(event, handler)
+    };
+    vm.runInNewContext(read("public/task-push.js"), { self, URL });
+    let work;
+    events.get("push")({ data: { json: () => ({ taskId: objectId, body: "Proveri policu" }) }, waitUntil: (promise) => { work = promise; } });
+    await work;
+    assert.equal(notifications[0].title, "Novi zadatak");
+    assert.equal(notifications[0].options.tag, `task-${objectId}`);
+    for (const taskId of ["https://evil.test", objectId]) {
+      events.get("notificationclick")({ notification: { data: { taskId }, close() {} }, waitUntil: (promise) => { work = promise; } });
+      await work;
+    }
+    assert.deepEqual(opened, [`https://app.example/store?task=${objectId}#task-${objectId}`]);
+    assert.equal(events.has("fetch"), false);
   });
   await test("admin Server Actions deny store sessions independently of page layouts", async () => {
     let actions = 0;
@@ -597,7 +726,7 @@ async function main() {
       seen.add(file);
       const source = read(file);
       if (/^[\s]*["']use server["']/.test(source)) return;
-      assert.ok(!/import\s+["']server-only["']|SUPABASE_SERVICE_ROLE_KEY|process\.env\.(?:CRON_SECRET|BIZNISOFT_PASSWORD)/.test(source), `Client graph reaches ${file}`);
+      assert.ok(!/import\s+["']server-only["']|SUPABASE_SERVICE_ROLE_KEY|process\.env\.(?:CRON_SECRET|BIZNISOFT_PASSWORD|VAPID_PRIVATE_KEY)/.test(source), `Client graph reaches ${file}`);
       const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
       for (const statement of ast.statements) {
         if (!ts.isImportDeclaration(statement) || statement.importClause?.isTypeOnly) continue;
@@ -660,7 +789,7 @@ async function main() {
     assert.ok(middleware.includes("copyResponseCookies(response, redirectResponse)"));
     assert.ok(middleware.includes("maxAge: 0") && middleware.includes("isSupabaseAuthCookieName"));
     assert.ok(logout.includes("supabase.auth.signOut()") && logout.includes("maxAge: 0"));
-    assert.match(loginPage, /if \(profile\) \{[\s\S]*redirect\(dashboardPathFor\(profile\)\)/);
+    assert.match(loginPage, /if \(profile\) \{[\s\S]*dashboardPathFor\(profile\)[\s\S]*redirect\(/);
     assert.ok(serverClient.includes("cookies()") && !serverClient.includes("globalThis"));
   });
   await test("security headers and private API caching remain configured", async () => {

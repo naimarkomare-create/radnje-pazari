@@ -6,12 +6,12 @@ import { SHELF_PHOTOS_BUCKET } from "@/lib/shelf-photos";
 import { computeTaskStatus, taskPriorityLabel, taskStatusLabel } from "@/lib/tasks";
 import type { ActionState, StoreTaskAssignment } from "@/lib/types";
 
-export function StoreTasks({ assignments, storeId }: { assignments: StoreTaskAssignment[]; storeId: string }) {
+export function StoreTasks({ assignments, storeId, fromNotification = false }: { assignments: StoreTaskAssignment[]; storeId: string; fromNotification?: boolean }) {
   return (
     <section className="space-y-4">
       <div>
-        <h2 className="text-xl font-bold text-ink">Današnji zadaci</h2>
-        <p className="mt-1 text-sm text-slate-600">Zadaci koje je admin poslao za danas.</p>
+        <h2 className="text-xl font-bold text-ink">{fromNotification ? "Zadatak iz obaveštenja" : "Današnji zadaci"}</h2>
+        {!fromNotification ? <p className="mt-1 text-sm text-slate-600">Zadaci koje je admin poslao za danas.</p> : null}
       </div>
       {assignments.length > 0 ? (
         <div className="grid gap-4 lg:grid-cols-2">
@@ -89,7 +89,7 @@ function StoreTaskCard({ assignment, storeId }: { assignment: StoreTaskAssignmen
   }
 
   return (
-    <article className="interactive-card rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <article id={`task-${assignment.task_id}`} className="interactive-card scroll-mt-20 rounded-lg border border-slate-200 bg-white p-4 shadow-sm target:border-leaf">
       <div className="flex flex-wrap items-center gap-2">
         <span className={priorityClass(task.priority)}>{taskPriorityLabel(task.priority)}</span>
         <span className={statusClass(done ? "done" : status)}>{taskStatusLabel(done ? "done" : status)}</span>

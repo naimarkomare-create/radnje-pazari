@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { dataErrorMessage } from "@/lib/security/validation";
 import Link from "next/link";
 import { AdminTaskForm } from "@/app/admin/zadaci/AdminTaskForm";
@@ -12,6 +13,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { Store, StoreTask } from "@/lib/types";
 
 const PAGE_SIZE = 30;
+export const maxDuration = 60;
 
 export default async function AdminTasksPage({
   searchParams: searchParamsPromise
@@ -58,7 +60,7 @@ export default async function AdminTasksPage({
           </p>
         ) : null}
         {error ? <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
-        <AdminTaskForm stores={stores} today={todayInBelgrade()} />
+        <AdminTaskForm initialRequestId={randomUUID()} stores={stores} today={todayInBelgrade()} />
         <TaskOverview tasks={tasks} />
         <Pagination
           page={page}
