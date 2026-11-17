@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getBizniSoftCredentials, getItems, getSessionHandle } from "@/lib/biznisoft/soap-client";
+import { BizniSoftSoapError, getBizniSoftCredentials, getItems, getSessionHandle } from "@/lib/biznisoft/soap-client";
 import type {
   BizniSoftTurnoverResult,
   BizniSoftTurnoverSnapshot
@@ -24,11 +24,17 @@ type TurnoverCacheRow = {
   refresh_started_at: string | null;
 };
 
+type StoreFailure = {
+  storeNumber: number | null;
+  errorCode: string;
+} & Partial<BizniSoftSoapError["diagnostic"]>;
+
 export class TurnoverServiceError extends Error {
   constructor(
     public readonly code: string,
     public readonly publicMessage: string,
-    public readonly status: number
+    public readonly status: number,
+    public readonly storeFailures?: StoreFailure[]
   ) {
     super(publicMessage);
     this.name = "TurnoverServiceError";
@@ -130,8 +136,13 @@ export async function getBizniSoftTurnover({
     return resultFromSnapshot(snapshot);
   } catch (error) {
     const errorCode = classifyTurnoverError(error);
+    console.error("BizniSoft turnover refresh failed.", {
+      businessDate,
+      errorCode,
+      soap: error instanceof BizniSoftSoapError ? error.diagnostic : undefined,
+      storeFailures: error instanceof TurnoverServiceError ? error.storeFailures : undefined
+    });
     await releaseRefreshLock(businessDate, refreshToken, errorCode);
-    console.error("BizniSoft turnover refresh failed.", { businessDate, errorCode });
 
     const fallbackCache = await readCache(businessDate);
     const fallbackSnapshot = snapshotFromCache(fallbackCache) ?? initialSnapshot;
@@ -195,21 +206,22 @@ async function fetchTurnoverSnapshot(
       } catch (error) {
         return {
           ok: false as const,
-          storeId: store.id,
-          errorCode: classifyTurnoverError(error)
+          failure: {
+            storeNumber: storeNumberFromName(store.name),
+            errorCode: classifyTurnoverError(error),
+            ...(error instanceof BizniSoftSoapError ? error.diagnostic : {})
+          }
         };
       }
     }
   );
-  const failures = storeResults.filter(
-    (result): result is { ok: false; storeId: string; errorCode: string } => !result.ok
-  );
+  const failures = storeResults.flatMap((result) => result.ok ? [] : [result.failure]);
 
   if (failures.length > 0) {
     const errorCode = failures.some((failure) => failure.errorCode === "timeout")
       ? "timeout"
       : failures[0].errorCode;
-    throw new TurnoverServiceError(errorCode, publicMessageForError(errorCode), 502);
+    throw new TurnoverServiceError(errorCode, publicMessageForError(errorCode), 502, failures);
   }
 
   const amounts = storeResults.filter(
@@ -439,10 +451,16 @@ function storeNumberFromName(name: string) {
 
 function classifyTurnoverError(error: unknown) {
   if (error instanceof TurnoverServiceError) return error.code;
+  if (error instanceof BizniSoftSoapError) {
+    if (error.diagnostic.kind === "timeout") return "timeout";
+    if (error.diagnostic.kind === "invalid_response") return "invalid_response";
+  }
 
   const message = error instanceof Error ? error.message.toLowerCase() : "";
   if (message.includes("timed out") || message.includes("timeout")) return "timeout";
   if (
+    message.includes("biznisoft_soap_url") ||
+    message.includes("biznisoft_tunnel") ||
     message.includes("biznisoft_company") ||
     message.includes("biznisoft_username") ||
     message.includes("selecting database") ||

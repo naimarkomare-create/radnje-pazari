@@ -44,9 +44,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    console.error("Unexpected BizniSoft turnover API error.", {
-      message: error instanceof Error ? error.message : "Unknown error"
-    });
+    console.error("Unexpected BizniSoft turnover API error.", { businessDate });
     return json(
       {
         success: false,

@@ -48,7 +48,40 @@ function safeUrl(value) {
 }
 
 async function createSoapClient(wsdlUrl) {
-  return soap.createClientAsync(wsdlUrl);
+  const username = process.env.BIZNISOFT_TUNNEL_USERNAME || "";
+  const password = process.env.BIZNISOFT_TUNNEL_PASSWORD || "";
+  if (!username && !password) return soap.createClientAsync(wsdlUrl);
+  if (!username || !password || username.includes(":")) {
+    throw new Error("Configure both BIZNISOFT_TUNNEL_USERNAME and BIZNISOFT_TUNNEL_PASSWORD; username cannot contain a colon.");
+  }
+  const target = new URL(wsdlUrl);
+  if (target.protocol !== "https:" || target.username || target.password) {
+    throw new Error("BizniSoft tunnel discovery requires HTTPS without embedded credentials.");
+  }
+  // Protect both WSDL retrieval and subsequent SOAP calls. Do not follow a WSDL's
+  // advertised LAN address when the script was explicitly configured for a tunnel.
+  let client;
+  try {
+    client = await soap.createClientAsync(wsdlUrl, {
+      wsdl_headers: { Authorization: `Basic ${Buffer.from(`${username}:${password}`, "utf8").toString("base64")}` },
+      wsdl_options: { maxRedirects: 0, timeout: 20_000 }
+    });
+  } catch {
+    // node-soap errors may include request headers and response bodies.
+    throw new Error("BizniSoft tunnel WSDL request failed. Check connectivity and tunnel authentication.");
+  }
+  const locations = Object.values(client.wsdl.definitions.services)
+    .flatMap((service) => Object.values(service.ports).map((port) => port.location));
+  const paths = [...new Set(locations.map((location) => {
+    const url = new URL(location);
+    return url.pathname + url.search;
+  }))];
+  if (paths.length !== 1) throw new Error("Tunnel WSDL has ambiguous SOAP endpoints; configure the endpoint explicitly before discovery.");
+  const endpoint = new URL(paths[0], target.origin);
+  if (endpoint.origin !== target.origin) throw new Error("Tunnel WSDL endpoint must stay on the configured origin.");
+  client.setEndpoint(endpoint.toString());
+  client.setSecurity(new soap.BasicAuthSecurity(username, password, { maxRedirects: 0, timeout: 20_000 }));
+  return client;
 }
 
 function flattenMethods(description) {

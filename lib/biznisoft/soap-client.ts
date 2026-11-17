@@ -12,6 +12,61 @@ export type BizniSoftCredentials = {
   password: string;
 };
 
+type SoapMethod = "GetSessionHandle" | "GetItems" | "GetItems2" | "GetItem";
+type TransportFailure = "dns" | "connection_refused" | "connection_reset" | "unreachable" | "timeout" | "tls" | "network";
+type SoapFailureDiagnostic = {
+  method: SoapMethod;
+  kind: TransportFailure | "http" | "soap_fault" | "invalid_response";
+  durationMs: number;
+  transportCode?: string;
+  httpStatus?: number;
+};
+
+export class BizniSoftSoapError extends Error {
+  constructor(message: string, public readonly diagnostic: SoapFailureDiagnostic) {
+    super(message);
+    this.name = "BizniSoftSoapError";
+  }
+}
+
+const TRANSPORT_FAILURES = new Map<string, TransportFailure>([
+  ["ENOTFOUND", "dns"],
+  ["EAI_AGAIN", "dns"],
+  ["ECONNREFUSED", "connection_refused"],
+  ["ECONNRESET", "connection_reset"],
+  ["UND_ERR_SOCKET", "connection_reset"],
+  ["ENETUNREACH", "unreachable"],
+  ["EHOSTUNREACH", "unreachable"],
+  ["ETIMEDOUT", "timeout"],
+  ["UND_ERR_CONNECT_TIMEOUT", "timeout"],
+  ["UND_ERR_HEADERS_TIMEOUT", "timeout"],
+  ["UND_ERR_BODY_TIMEOUT", "timeout"],
+  ["ERR_TLS_CERT_ALTNAME_INVALID", "tls"],
+  ["CERT_HAS_EXPIRED", "tls"],
+  ["DEPTH_ZERO_SELF_SIGNED_CERT", "tls"],
+  ["SELF_SIGNED_CERT_IN_CHAIN", "tls"],
+  ["UNABLE_TO_GET_ISSUER_CERT_LOCALLY", "tls"],
+  ["UNABLE_TO_VERIFY_LEAF_SIGNATURE", "tls"],
+  ["ERR_SSL_WRONG_VERSION_NUMBER", "tls"]
+]);
+
+function describeTransportFailure(error: unknown): { kind: TransportFailure; transportCode?: string } {
+  const pending = [error];
+  // Node fetch wraps socket errors in cause, sometimes with multiple address attempts.
+  for (let i = 0; i < pending.length && i < 12; i++) {
+    const candidate = pending[i];
+    if (!candidate || typeof candidate !== "object") continue;
+    const { code, cause, errors } = candidate as { code?: unknown; cause?: unknown; errors?: unknown };
+    if (typeof code === "string") {
+      const kind = TRANSPORT_FAILURES.get(code);
+      if (kind) return { kind, transportCode: code };
+    }
+    if (cause) pending.push(cause);
+    if (Array.isArray(errors)) pending.push(...errors.slice(0, 4));
+  }
+  return { kind: "network" };
+}
+
 export function getBizniSoftCredentials(): BizniSoftCredentials {
   const soapUrl = process.env.BIZNISOFT_SOAP_URL?.trim() ?? "";
   if (!soapUrl) {
@@ -66,7 +121,7 @@ function warnOnceForInsecureProductionTransport(soapUrl: string) {
 }
 
 export async function getSessionHandle(credentials = getBizniSoftCredentials()) {
-  const xml = await callSoapMethod({
+  const sessionHandle = await callSoapMethod({
     method: "GetSessionHandle",
     params: [
       { name: "Language", type: "xsd:int", value: "0" },
@@ -80,8 +135,6 @@ export async function getSessionHandle(credentials = getBizniSoftCredentials()) 
     ],
     soapUrl: credentials.soapUrl
   });
-  const sessionHandle = extractSoapReturn(xml);
-
   if (!sessionHandle) {
     throw new Error("BizniSoft login returned empty session handle");
   }
@@ -104,7 +157,7 @@ export async function getItems({
 }) {
   validateSessionHandle(sessionHandle);
 
-  const xml = await callSoapMethod({
+  return callSoapMethod({
     method: "GetItems",
     params: [
       { name: "SessionHandle", type: "xsd:string", value: sessionHandle },
@@ -114,8 +167,6 @@ export async function getItems({
     ],
     soapUrl
   });
-
-  return extractSoapReturn(xml);
 }
 
 export async function getItems2({
@@ -135,7 +186,7 @@ export async function getItems2({
 }) {
   validateSessionHandle(sessionHandle);
 
-  const xml = await callSoapMethod({
+  return callSoapMethod({
     method: "GetItems2",
     params: [
       { name: "SessionHandle", type: "xsd:string", value: sessionHandle },
@@ -146,8 +197,6 @@ export async function getItems2({
     ],
     soapUrl
   });
-
-  return extractSoapReturn(xml);
 }
 
 export async function getItem({
@@ -163,7 +212,7 @@ export async function getItem({
 }) {
   validateSessionHandle(sessionHandle);
 
-  const xml = await callSoapMethod({
+  return callSoapMethod({
     method: "GetItem",
     params: [
       { name: "SessionHandle", type: "xsd:string", value: sessionHandle },
@@ -172,8 +221,6 @@ export async function getItem({
     ],
     soapUrl
   });
-
-  return extractSoapReturn(xml);
 }
 
 function validateSessionHandle(sessionHandle: string) {
@@ -186,19 +233,35 @@ function isIntegerString(value: string) {
   return /^\d+$/.test(value);
 }
 
+function tunnelAuthorization(soapUrl: string) {
+  const username = process.env.BIZNISOFT_TUNNEL_USERNAME ?? "";
+  const password = process.env.BIZNISOFT_TUNNEL_PASSWORD ?? "";
+  if (!username && !password) return undefined;
+  if (!username || !password || username.includes(":")) {
+    throw new Error("BIZNISOFT_TUNNEL_USERNAME and BIZNISOFT_TUNNEL_PASSWORD must both be configured; username must not contain a colon.");
+  }
+  const url = new URL(soapUrl);
+  if (url.protocol !== "https:" || url.username || url.password) {
+    throw new Error("BIZNISOFT_TUNNEL authentication requires HTTPS without credentials embedded in the URL.");
+  }
+  return `Basic ${Buffer.from(`${username}:${password}`, "utf8").toString("base64")}`;
+}
+
 async function callSoapMethod({
   method,
   params,
   soapUrl
 }: {
-  method: string;
+  method: SoapMethod;
   params: Array<{ name: string; type: string; value: string }>;
   soapUrl: string;
 }) {
+  const authorization = tunnelAuthorization(soapUrl);
   const body = buildSoapEnvelope(method, params);
+  const startedAt = Date.now();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), SOAP_TIMEOUT_MS);
-  let response: Response;
+  let response: Response | undefined;
   let text: string;
 
   try {
@@ -207,19 +270,29 @@ async function callSoapMethod({
       cache: "no-store",
       headers: {
         "Content-Type": "text/xml; charset=utf-8",
-        SOAPAction: `${SOAP_NAMESPACE}#${method}`
+        SOAPAction: `${SOAP_NAMESPACE}#${method}`,
+        ...(authorization ? { Authorization: authorization } : {})
       },
+      // Do not forward tunnel credentials or SOAP bodies through redirects.
+      ...(authorization ? { redirect: "error" as const } : {}),
       method: "POST",
       signal: controller.signal
     });
     text = await response.text();
   } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(`BizniSoft SOAP ${method} timed out after ${SOAP_TIMEOUT_MS / 1000} seconds.`);
-    }
-
-    // Fetch errors can include the request URL; do not propagate credential-bearing diagnostics.
-    throw new Error(`BizniSoft SOAP ${method} request failed.`);
+    const aborted = controller.signal.aborted || (error instanceof Error && error.name === "AbortError");
+    // Never retain the raw error or URL as part of the diagnostic.
+    throw new BizniSoftSoapError(
+      aborted
+        ? `BizniSoft SOAP ${method} timed out after ${SOAP_TIMEOUT_MS / 1000} seconds.`
+        : `BizniSoft SOAP ${method} request failed.`,
+      {
+        method,
+        durationMs: Date.now() - startedAt,
+        httpStatus: response?.status,
+        ...(aborted ? { kind: "timeout" } : describeTransportFailure(error))
+      }
+    );
   } finally {
     clearTimeout(timeout);
   }
@@ -229,15 +302,20 @@ async function callSoapMethod({
     params.filter((param) => /username|password|sessionhandle|bsliveid/i.test(param.name)).map((param) => param.value)
   );
 
-  if (!response.ok) {
-    throw new Error(faultString ?? `BizniSoft SOAP ${method} failed with HTTP ${response.status}`);
+  const diagnostic = { method, durationMs: Date.now() - startedAt, httpStatus: response.status };
+
+  if (!response.ok || faultString) {
+    throw new BizniSoftSoapError(
+      faultString ?? `BizniSoft SOAP ${method} failed with HTTP ${response.status}`,
+      { ...diagnostic, kind: faultString !== null ? "soap_fault" : "http" }
+    );
   }
 
-  if (faultString) {
-    throw new Error(faultString);
+  try {
+    return extractSoapReturn(text);
+  } catch {
+    throw new BizniSoftSoapError("SOAP response did not contain <return>.", { ...diagnostic, kind: "invalid_response" });
   }
-
-  return text;
 }
 
 function buildSoapEnvelope(method: string, params: Array<{ name: string; type: string; value: string }>) {
@@ -277,7 +355,13 @@ function extractSoapFaultString(xml: string, secrets: string[] = []) {
 
   let message = decodeXml(match[1].trim());
   // The upstream fault may echo login parameters or a session handle.
-  const sensitiveValues = [...secrets, process.env.BIZNISOFT_USERNAME, process.env.BIZNISOFT_PASSWORD]
+  const tunnelUsername = process.env.BIZNISOFT_TUNNEL_USERNAME;
+  const tunnelPassword = process.env.BIZNISOFT_TUNNEL_PASSWORD;
+  const sensitiveValues = [
+    ...secrets, process.env.BIZNISOFT_USERNAME, process.env.BIZNISOFT_PASSWORD,
+    tunnelUsername, tunnelPassword,
+    ...(tunnelUsername && tunnelPassword ? [Buffer.from(`${tunnelUsername}:${tunnelPassword}`, "utf8").toString("base64")] : [])
+  ]
     .filter((value): value is string => Boolean(value))
     .sort((left, right) => right.length - left.length);
   for (const value of sensitiveValues) {
@@ -289,6 +373,7 @@ function extractSoapFaultString(xml: string, secrets: string[] = []) {
     .replace(/\{?[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}\}?/gi, "[redacted]")
     .replace(/\beyJ[\w-]+\.[\w-]+\.[\w-]+/g, "[redacted]")
     .replace(/\bBearer\s+[^\s<"']+/gi, "Bearer [redacted]")
+    .replace(/\bBasic\s+[^\s<"']+/gi, "Basic [redacted]")
     .slice(0, 500);
 }
 

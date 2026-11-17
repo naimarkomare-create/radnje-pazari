@@ -26,7 +26,7 @@ const realLibraries = new Set([
   "lib/security/api.ts", "lib/security/request.ts", "lib/security/validation.ts",
   "lib/security/sync-lock.ts", "lib/return-proposals.ts", "lib/date.ts", "lib/pagination.ts",
   "lib/revenue.ts", "lib/temperature-slots.ts", "lib/shelf-photos.ts", "lib/tasks.ts",
-  "lib/biznisoft/soap-client.ts", "lib/biznisoft/sync-suppliers.ts", "lib/excel-templates.ts", "lib/produce.ts",
+  "lib/biznisoft/soap-client.ts", "lib/biznisoft/turnover.ts", "lib/biznisoft/sync-suppliers.ts", "lib/excel-templates.ts", "lib/produce.ts",
   "lib/temperature-bulk-export.ts", "lib/supabase/auth-errors.ts", "lib/popis-otpis.ts", "lib/writeoff-list-lock.ts",
   "lib/task-push-config.ts", "lib/task-push.ts"
 ]);
@@ -612,6 +612,154 @@ async function main() {
     assert.ok(message.includes("[redacted]"));
     for (const secret of [session, "EXAMPLE_USERNAME", "EXAMPLE_PASSWORD", "EXAMPLE_TOKEN"]) assert.ok(!message.includes(secret));
     assert.throws(() => fault.extractSoapReturn("<html>private upstream response</html>"), (e) => !e.message.includes("private upstream"));
+  });
+  await test("optional tunnel Basic Auth covers all SOAP methods without changing login or requests", async () => {
+    const env = { BIZNISOFT_TUNNEL_USERNAME: "EXAMPLE_TUNNEL_USER", BIZNISOFT_TUNNEL_PASSWORD: "EXAMPLE_TUNNEL_PASSWORD" };
+    const authorization = `Basic ${Buffer.from(`${env.BIZNISOFT_TUNNEL_USERNAME}:${env.BIZNISOFT_TUNNEL_PASSWORD}`).toString("base64")}`;
+    const credentials = { soapUrl: "https://soap.invalid/soap/IBSWebService", companyId: "1", companyYear: "2026", username: "EXAMPLE_SOAP_USER", password: "" };
+    const session = `{${objectId}}`;
+    async function exercise(settings) {
+      const requests = [];
+      const client = harness({ env: settings, fetch: async (url, init) => {
+        requests.push({ url, ...init });
+        return new Response(`<return>${requests.length === 1 ? session : "[]"}</return>`);
+      } }).load("lib/biznisoft/soap-client.ts");
+      const sessionHandle = await client.getSessionHandle(credentials);
+      const common = { sessionHandle, soapUrl: credentials.soapUrl, itemType: "itArticle" };
+      await client.getItems({ ...common, jsonGetItemsRequest: '{"ID":123}', limit: 10 });
+      await client.getItems2({ ...common, jsonGetItemsRequest: "{}", offset: 0, rowcount: 10 });
+      await client.getItem({ ...common, jsonGetItemRequest: '{"ID":123}' });
+      return requests;
+    }
+    const plain = await exercise({});
+    const protectedRequests = await exercise(env);
+    for (let i = 0; i < plain.length; i++) {
+      assert.equal(plain[i].headers.Authorization, undefined);
+      assert.equal(plain[i].redirect, undefined);
+      assert.equal(protectedRequests[i].headers.Authorization, authorization);
+      assert.equal(protectedRequests[i].redirect, "error");
+      assert.equal(protectedRequests[i].body, plain[i].body);
+      assert.equal(protectedRequests[i].headers.SOAPAction, plain[i].headers.SOAPAction);
+      assert.equal(protectedRequests[i].url, credentials.soapUrl);
+    }
+    for (const settings of [{ BIZNISOFT_TUNNEL_USERNAME: "EXAMPLE_USER" }, { BIZNISOFT_TUNNEL_PASSWORD: "EXAMPLE_PASSWORD" }, { ...env, BIZNISOFT_TUNNEL_USERNAME: "invalid:user" }]) {
+      await assert.rejects(() => harness({ env: settings }).load("lib/biznisoft/soap-client.ts").getSessionHandle(credentials), /BIZNISOFT_TUNNEL/);
+    }
+    for (const soapUrl of ["http://soap.invalid", "https://EXAMPLE_USER:EXAMPLE_PASSWORD@soap.invalid"]) {
+      await assert.rejects(() => harness({ env }).load("lib/biznisoft/soap-client.ts").getSessionHandle({ ...credentials, soapUrl }), /HTTPS without credentials/);
+    }
+    for (const status of [401, 403]) {
+      const client = harness({ env, fetch: async () => new Response(authorization, { status }) }).load("lib/biznisoft/soap-client.ts");
+      await assert.rejects(() => client.getSessionHandle(credentials), (error) => {
+        assert.equal(error.diagnostic.kind, "http");
+        assert.equal(error.diagnostic.httpStatus, status);
+        assert.ok(!error.message.includes(authorization));
+        return true;
+      });
+    }
+    const fault = harness({ env, fetch: async () => new Response(`<Fault><faultstring>${authorization} ${env.BIZNISOFT_TUNNEL_PASSWORD}</faultstring></Fault>`, { status: 500 }) }).load("lib/biznisoft/soap-client.ts");
+    await assert.rejects(() => fault.getSessionHandle(credentials), (error) => !error.message.includes(env.BIZNISOFT_TUNNEL_PASSWORD) && !error.message.includes(authorization));
+    const timeout = harness({ env, fetch: async () => { throw new DOMException("EXAMPLE_PRIVATE_DETAIL", "AbortError"); } }).load("lib/biznisoft/soap-client.ts");
+    await assert.rejects(() => timeout.getSessionHandle(credentials), (error) => error.diagnostic.kind === "timeout" && !error.message.includes("EXAMPLE_PRIVATE_DETAIL"));
+  });
+  await test("discovery tunnel authentication protects WSDL and remaps advertised SOAP endpoint safely", async () => {
+    let options, endpoint, security;
+    const client = { wsdl: { definitions: { services: { service: { ports: { port: { location: "http://localhost:8080/soap/IBSWebService" } } } } } },
+      setEndpoint(value) { endpoint = value; }, setSecurity(value) { security = value; } };
+    const fakeSoap = { createClientAsync: async (_, value) => { options = value; return client; }, BasicAuthSecurity: class { constructor(user, password) { this.user = user; this.password = password; } } };
+    const module = { exports: {} };
+    vm.runInNewContext(read("scripts/biznisoft-common.js"), { module, exports: module.exports, URL, Buffer,
+      process: { cwd: () => root, env: { BIZNISOFT_TUNNEL_USERNAME: "EXAMPLE_USER", BIZNISOFT_TUNNEL_PASSWORD: "EXAMPLE_PASSWORD" } },
+      require: (name) => name === "soap" ? fakeSoap : require(name) });
+    await module.exports.createSoapClient("https://soap.invalid/wsdl/IBSWebService");
+    assert.equal(options.wsdl_headers.Authorization, `Basic ${Buffer.from("EXAMPLE_USER:EXAMPLE_PASSWORD").toString("base64")}`);
+    assert.equal(options.wsdl_options.maxRedirects, 0);
+    assert.equal(endpoint, "https://soap.invalid/soap/IBSWebService");
+    assert.equal(security.user, "EXAMPLE_USER");
+  });
+  await test("turnover logs safe login failure categories without exposing upstream details", async () => {
+    const secret = "EXAMPLE_PRIVATE_UPSTREAM_DETAIL";
+    const transportError = (cause) => async () => { throw new TypeError(secret, { cause }); };
+    const cases = [
+      [transportError({ code: "ENOTFOUND", hostname: secret }), "dns", "upstream_unavailable", "ENOTFOUND"],
+      [transportError(new AggregateError([{ code: "ECONNREFUSED", address: secret }])), "connection_refused", "upstream_unavailable", "ECONNREFUSED"],
+      [transportError({ code: "UND_ERR_CONNECT_TIMEOUT" }), "timeout", "timeout", "UND_ERR_CONNECT_TIMEOUT"],
+      [async () => { throw new DOMException(secret, "AbortError"); }, "timeout", "timeout"],
+      [transportError({ code: "CERT_HAS_EXPIRED" }), "tls", "upstream_unavailable", "CERT_HAS_EXPIRED"],
+      [transportError({ code: secret }), "network", "upstream_unavailable"],
+      [async () => new Response(secret, { status: 503 }), "http", "upstream_unavailable", undefined, 503],
+      [async () => new Response(`<Fault><faultstring>${secret}</faultstring></Fault>`, { status: 500 }), "soap_fault", "upstream_unavailable", undefined, 500],
+      [async () => new Response(secret), "invalid_response", "invalid_response", undefined, 200]
+    ];
+    const path = "app/api/admin/biznisoft/turnover/route.ts";
+    const date = "2026-01-01";
+    for (const [profile, status] of [[null, 401], [worker, 403]]) {
+      assert.equal((await harness({ profile }).load(path).GET(request("GET", undefined, `?date=${date}`))).status, status);
+    }
+    for (const [fetch, kind, code, transportCode, httpStatus] of cases) {
+      const logs = [];
+      const service = database(({ table }) => ({ data: table === "stores" ? stores : null }));
+      service.rpc = async () => ({ data: "EXAMPLE_LEASE_TOKEN" });
+      const fixture = harness({ profile: admin, service, fetch, console: { error: (...args) => logs.push(args) }, env: {
+        BIZNISOFT_SOAP_URL: "https://soap.invalid", BIZNISOFT_COMPANY_ID: "1", BIZNISOFT_USERNAME: "EXAMPLE_USERNAME"
+      } });
+      const stores = fixture.load("lib/produce.ts").PRODUCE_STORE_NAMES.map((name, index) => ({
+        id: `store-${index}`, name, biznisoft_storage_id: index + 1
+      }));
+      const response = await fixture.load(path).GET(request("GET", undefined, `?date=${date}`));
+      assert.equal(response.status, 502);
+      const body = await response.json();
+      assert.equal(body.code, code);
+      assert.equal(body.soap, undefined);
+      assert.equal(body.storeFailures, undefined);
+      assert.equal(logs.length, 1);
+      const diagnostic = logs[0][1].soap;
+      assert.equal(diagnostic.method, "GetSessionHandle");
+      assert.equal(diagnostic.kind, kind);
+      assert.equal(diagnostic.transportCode, transportCode);
+      assert.equal(diagnostic.httpStatus, httpStatus);
+      assert.equal(typeof diagnostic.durationMs, "number");
+      assert.ok(!JSON.stringify([logs, body]).includes(secret));
+      assert.ok(!JSON.stringify([logs, body]).includes("soap.invalid"));
+    }
+  });
+  await test("turnover preserves the last successful snapshot and logs the failing store report safely", async () => {
+    const logs = [];
+    const date = "2026-01-01";
+    const session = `{${objectId}}`;
+    const snapshot = {
+      businessDate: date, currency: "RSD", total: 125.5, stores: [], representedStores: 1,
+      mappingComplete: false, fetchedAt: "2026-01-01T13:30:00Z", source: "biznisoft", warnings: []
+    };
+    const service = database(({ table, verb }) => ({ data: table === "stores" ? stores : verb === "select" ? {
+      payload: snapshot, fetched_at: snapshot.fetchedAt
+    } : null }));
+    service.rpc = async () => ({ data: "EXAMPLE_LEASE_TOKEN" });
+    const fixture = harness({ profile: admin, service, console: { error: (...args) => logs.push(args) }, env: {
+      BIZNISOFT_SOAP_URL: "https://soap.invalid", BIZNISOFT_COMPANY_ID: "1", BIZNISOFT_USERNAME: "EXAMPLE_USERNAME"
+    }, fetch: async (_, init) => {
+      if (init.headers.SOAPAction.endsWith("#GetSessionHandle")) return new Response(`<return>${session}</return>`);
+      assert.match(init.body, /itOperater_Sale_Report/);
+      return new Response(`<Fault><faultstring>EXAMPLE_PRIVATE_FAULT ${session}</faultstring></Fault>`, { status: 500 });
+    } });
+    const stores = fixture.load("lib/produce.ts").PRODUCE_STORE_NAMES.map((name, index) => ({
+      id: `store-${index}`, name, biznisoft_storage_id: index === 0 ? 1 : null
+    }));
+    const response = await fixture.load("app/api/admin/biznisoft/turnover/route.ts").GET(request("GET", undefined, `?date=${date}&force=true`));
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.stale, true);
+    assert.equal(body.total, snapshot.total);
+    assert.equal(body.fetchedAt, snapshot.fetchedAt);
+    const [failure] = logs[0][1].storeFailures;
+    assert.equal(failure.storeNumber, 1);
+    assert.equal(failure.method, "GetItems");
+    assert.equal(failure.kind, "soap_fault");
+    assert.equal(failure.httpStatus, 500);
+    for (const secret of [session, "EXAMPLE_PRIVATE_FAULT", "EXAMPLE_LEASE_TOKEN"]) {
+      assert.ok(!JSON.stringify([logs, body]).includes(secret));
+    }
+    assert.ok(service.calls.filter((call) => call.verb === "update").every((call) => !Object.hasOwn(call.payload, "payload")));
   });
   await test("export templates treat user text as strings, preserve numbers and intentional formulas", async () => {
     const ExcelJS = require("exceljs"), JSZip = require("jszip");

@@ -9,6 +9,8 @@ const definitions = [
   { name: "BIZNISOFT_COMPANY_YEAR", group: "biznisoft", kind: "integer" },
   { name: "BIZNISOFT_USERNAME", group: "biznisoft", kind: "text" },
   { name: "BIZNISOFT_PASSWORD", group: "biznisoft", kind: "present", optional: true },
+  { name: "BIZNISOFT_TUNNEL_USERNAME", group: "optional", kind: "present", optional: true },
+  { name: "BIZNISOFT_TUNNEL_PASSWORD", group: "optional", kind: "present", optional: true },
   { name: "AUTO_CREATE_PRICE_TASKS", group: "config", kind: "boolean" },
   { name: "BIZNISOFT_SOAP_BASE_URL", group: "optional", kind: "http-url", optional: true }
 ];
@@ -61,6 +63,20 @@ for (const definition of definitions) {
       errors.push(`${definition.name}: invalid URL`);
     }
   }
+}
+
+const tunnelUsername = process.env.BIZNISOFT_TUNNEL_USERNAME ?? "";
+const tunnelPassword = process.env.BIZNISOFT_TUNNEL_PASSWORD ?? "";
+if (tunnelUsername || tunnelPassword) {
+  if (!tunnelUsername || !tunnelPassword || tunnelUsername.includes(":")) {
+    errors.push("BIZNISOFT_TUNNEL_USERNAME and BIZNISOFT_TUNNEL_PASSWORD: configure both; username cannot contain a colon");
+  }
+  try {
+    const url = new URL(process.env.BIZNISOFT_SOAP_URL ?? "");
+    if (url.protocol !== "https:" || url.username || url.password) {
+      errors.push("BIZNISOFT_SOAP_URL: tunnel authentication requires HTTPS without embedded credentials");
+    }
+  } catch { /* URL validity is checked above. */ }
 }
 
 const forbiddenPublicNames = Object.keys(process.env).filter(

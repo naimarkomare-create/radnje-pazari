@@ -223,6 +223,33 @@ Iste promenljive dodajte u Vercel:
 
 BizniSoft promenljive i sve tajne su server-only. `BIZNISOFT_PASSWORD` je opciona promenljiva: kada nedostaje ili je prazna, SOAP prijava dobija tačno prazan string. `BIZNISOFT_USERNAME` ostaje obavezan. Ostavite `AUTO_CREATE_PRICE_TASKS=false` dok posebno ne odobrite automatsko pravljenje zadataka. Lokalni discovery skriptovi mogu dodatno koristiti opcioni `BIZNISOFT_SOAP_BASE_URL`; aplikacija u produkciji ga ne koristi.
 
+### Protected HTTPS tunnel
+
+Set `BIZNISOFT_SOAP_URL` to the tunnel HTTPS origin followed by the existing
+`/soap/IBSWebService` path, not `/` or the WSDL URL. The inspected local configuration
+has no query parameters. Do not embed credentials in the URL.
+
+Optional server-only `BIZNISOFT_TUNNEL_USERNAME` and `BIZNISOFT_TUNNEL_PASSWORD`
+enable HTTP Basic authentication for every production SOAP call, including login,
+turnover, articles, prices and synchronization. Configure both or neither. These
+credentials are independent of `BIZNISOFT_USERNAME` / `BIZNISOFT_PASSWORD` (the SOAP
+password may still be empty). Tunnel authentication requires HTTPS and rejects
+redirects. No existing HTTP Authorization header is used by the SOAP integration.
+
+Configure these variables in Vercel's Production environment; changes require a
+new deployment, which must be separately approved. Keep the tunnel agent running
+on the BizniSoft server. Local discovery scripts additionally need
+`BIZNISOFT_SOAP_BASE_URL` set to the tunnel origin; WSDL and SOAP calls then both use
+tunnel authentication and the SOAP path advertised by the WSDL.
+
+Before live verification, check `/wsdl/IBSWebService` on the BizniSoft server's local
+port 8080 and confirm its service address uses `/soap/IBSWebService`. An HTTP 200
+from `/` alone does not verify a SOAP endpoint. Then test a read-only SOAP login
+and report through the application. A 401 indicates HTTP authentication was
+rejected before SOAP login; inspect safe server diagnostics, never SOAP bodies or
+Authorization headers. Do not run a synchronization merely to test connectivity,
+because it writes application data.
+
 ## Obaveštenja za zadatke
 
 Za opciju **Pošalji notifikaciju na telefon** potrebna je migracija
