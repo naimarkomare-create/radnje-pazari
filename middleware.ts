@@ -90,7 +90,7 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|api/cron|api/cleanup-shelf-photos|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|map|woff|woff2|ttf|xlsx|webmanifest)$).*)"
+    "/((?!_next/static|_next/image|favicon.ico|api/cron|api/cleanup-shelf-photos|api/diagnostics/biznisoft-session/?$|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|map|woff|woff2|ttf|xlsx|webmanifest)$).*)"
   ]
 };
 

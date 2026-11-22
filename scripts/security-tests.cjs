@@ -737,6 +737,62 @@ async function main() {
     const timeout = harness({ env, fetch: async () => { throw new DOMException("EXAMPLE_PRIVATE_DETAIL", "AbortError"); } }).load("lib/biznisoft/soap-client.ts");
     await assert.rejects(() => timeout.getSessionHandle(credentials), (error) => error.diagnostic.kind === "timeout" && !error.message.includes("EXAMPLE_PRIVATE_DETAIL"));
   });
+  await test("Preview session diagnostic is isolated from Supabase and runs only one SOAP login", async () => {
+    const { unstable_doesMiddlewareMatch } = require("next/experimental/testing/server");
+    const url = "/api/diagnostics/biznisoft-session";
+    const route = "app" + url + "/route.ts";
+    const secret = "a".repeat(64);
+    const session = `{${objectId}}`;
+    const settings = {
+      VERCEL_ENV: "preview",
+      BIZNISOFT_SESSION_PROBE_SECRET: secret,
+      BIZNISOFT_SOAP_URL: "https://soap.invalid/soap/IBSWebService",
+      BIZNISOFT_TUNNEL_USERNAME: "EXAMPLE_TUNNEL_USER",
+      BIZNISOFT_TUNNEL_PASSWORD: "EXAMPLE_TUNNEL_PASSWORD",
+      BIZNISOFT_COMPANY_ID: "1",
+      BIZNISOFT_USERNAME: "EXAMPLE_SOAP_USER"
+    };
+    const config = harness().load("middleware.ts").config;
+    const matches = (path) => unstable_doesMiddlewareMatch({ config, nextConfig: {}, url: path });
+    assert.equal(matches(url), false);
+    assert.equal(matches(url + "/other"), true);
+    assert.equal(matches(url + "-other"), true);
+    assert.equal(matches("/api/admin/biznisoft/turnover"), true);
+    const call = (env, token, fetch) => harness({ env, fetch }).load(route).POST(new NextRequest("https://app.example" + url, {
+      method: "POST", headers: token ? { authorization: "Bearer " + token } : {}
+    }));
+    for (const [env, token, status] of [
+      [{ ...settings, VERCEL_ENV: "production" }, secret, 404],
+      [{ ...settings, VERCEL_ENV: undefined }, secret, 404],
+      [{ ...settings, BIZNISOFT_SESSION_PROBE_SECRET: "short" }, "short", 404],
+      [settings, undefined, 401],
+      [settings, "b".repeat(64), 401],
+      [{ ...settings, BIZNISOFT_TUNNEL_PASSWORD: undefined }, secret, 503],
+      [{ ...settings, BIZNISOFT_SOAP_URL: "https://soap.invalid/wsdl/IBSWebService" }, secret, 503],
+      [{ ...settings, BIZNISOFT_SOAP_URL: "http://soap.invalid/soap/IBSWebService" }, secret, 503]
+    ]) {
+      assert.equal((await call(env, token, failCall)).status, status);
+    }
+    let sent = 0;
+    const result = await call(settings, secret, async (soapUrl, init) => {
+      sent++;
+      assert.equal(soapUrl, settings.BIZNISOFT_SOAP_URL);
+      assert.equal(soapMethod(init), "GetSessionHandle");
+      assert.equal(init.headers.Authorization, "Basic " + Buffer.from("EXAMPLE_TUNNEL_USER:EXAMPLE_TUNNEL_PASSWORD").toString("base64"));
+      assert.ok(!init.body.includes(secret));
+      return new Response(soapReply("GetSessionHandle", session));
+    });
+    assert.equal(sent, 1);
+    assert.equal(result.status, 200);
+    assert.equal(result.headers.get("cache-control"), "private, no-store");
+    assert.deepEqual(await result.json(), { ok: true, method: "GetSessionHandle" });
+    const denied = await call(settings, secret, async () => new Response(session, { status: 401 }));
+    assert.deepEqual(await denied.json(), { ok: false, method: "GetSessionHandle", code: "http", httpStatus: 401 });
+    const unexpected = await call(settings, secret, async () => new Response("<html>" + session + "</html>"));
+    assert.deepEqual(await unexpected.json(), {
+      ok: false, method: "GetSessionHandle", code: "invalid_response", httpStatus: 200, responseReason: "html_response"
+    });
+  });
   await test("discovery tunnel authentication protects WSDL and remaps advertised SOAP endpoint safely", async () => {
     let options, endpoint, security;
     const client = { wsdl: { definitions: { services: { service: { ports: { port: { location: "http://localhost:8080/soap/IBSWebService" } } } } } },
