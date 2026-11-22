@@ -108,6 +108,14 @@ const request = (method = "GET", body, suffix = "") => new NextRequest(`https://
   method, ...(body === undefined ? {} : { body: JSON.stringify(body), headers: { "Content-Type": "application/json" } })
 });
 const context = { params: { id: objectId, itemId: objectId } };
+const soapEnvelope = (payload) => `<?xml version="1.0" encoding="UTF-8"?>
+<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <SOAP-ENV:Body xmlns:NS1="urn:BSWebSericeIntf-IBSWebService">${payload}</SOAP-ENV:Body>
+</SOAP-ENV:Envelope>`;
+const soapReply = (method, value) => soapEnvelope(`<NS1:${method}Response><return xsi:type="xsd:string">${value}</return></NS1:${method}Response>`);
+const soapFault = (message) => soapEnvelope(`<SOAP-ENV:Fault><faultstring>${message}</faultstring></SOAP-ENV:Fault>`);
+const soapMethod = (init) => /#(\w+)"$/.exec(init.headers.SOAPAction)?.[1];
 let passed = 0;
 async function test(name, run) { await run(); passed += 1; console.log(`PASS ${name}`); }
 
@@ -592,26 +600,93 @@ async function main() {
     const credentials = { soapUrl: "https://soap.invalid", companyId: "1", companyYear: "2026", username: "EXAMPLE_USERNAME", password: "" };
     const client = harness({ console: { log: (...a) => logs.push(a.join(" ")) }, fetch: async (_, init) => {
       requests.push(init);
-      return new Response(`<return>${requests.length === 1 ? session : "[]"}</return>`);
+      return new Response(soapReply(soapMethod(init), requests.length === 1 ? session : "[]"));
     } }).load("lib/biznisoft/soap-client.ts");
     const returned = await client.getSessionHandle(credentials);
     assert.equal(returned, session);
     await client.getItems({ sessionHandle: returned, itemType: "itSaleActions", jsonGetItemsRequest: "{}", soapUrl: credentials.soapUrl });
     assert.match(requests[0].body, /<Password xsi:type="xsd:string"><\/Password>/);
-    assert.equal(requests[1].headers.SOAPAction, "urn:BSWebSericeIntf-IBSWebService#GetItems");
+    assert.equal(requests[1].headers.SOAPAction, '"urn:BSWebSericeIntf-IBSWebService#GetItems"');
     assert.ok(requests[1].body.includes(session));
     assert.ok(!logs.join(" ").includes(session));
     assert.ok(!logs.join(" ").includes(credentials.username));
     const soapSource = read("lib/biznisoft/soap-client.ts");
     assert.ok(!soapSource.includes("79.175.71.83"));
     assert.ok(!soapSource.includes("console.log"));
-    const fault = harness({ env: { BIZNISOFT_USERNAME: "EXAMPLE_USERNAME", BIZNISOFT_PASSWORD: "EXAMPLE_PASSWORD" } }).load("lib/biznisoft/soap-client.ts");
-    let message = "";
-    try { fault.extractSoapReturn(`<Fault><faultstring>EXAMPLE_USERNAME EXAMPLE_PASSWORD ${session} Bearer EXAMPLE_TOKEN</faultstring></Fault>`); }
-    catch (e) { message = e.message; }
-    assert.ok(message.includes("[redacted]"));
-    for (const secret of [session, "EXAMPLE_USERNAME", "EXAMPLE_PASSWORD", "EXAMPLE_TOKEN"]) assert.ok(!message.includes(secret));
-    assert.throws(() => fault.extractSoapReturn("<html>private upstream response</html>"), (e) => !e.message.includes("private upstream"));
+    const fault = harness({ env: { BIZNISOFT_USERNAME: "EXAMPLE_USERNAME", BIZNISOFT_PASSWORD: "EXAMPLE_PASSWORD" },
+      fetch: async () => new Response(soapFault(`EXAMPLE_USERNAME EXAMPLE_PASSWORD ${session} Bearer EXAMPLE_TOKEN`), { status: 500 })
+    }).load("lib/biznisoft/soap-client.ts");
+    await assert.rejects(() => fault.getSessionHandle(credentials), (error) => {
+      assert.equal(error.diagnostic.kind, "soap_fault");
+      assert.ok(error.message.includes("[redacted]"));
+      for (const secret of [session, "EXAMPLE_USERNAME", "EXAMPLE_PASSWORD", "EXAMPLE_TOKEN"]) assert.ok(!error.message.includes(secret));
+      return true;
+    });
+  });
+  await test("GetSessionHandle POST matches the WSDL and parses RPC-encoded responses", async () => {
+    const { DOMParser } = require("@xmldom/xmldom");
+    const wsdl = new DOMParser().parseFromString(read("bswebservice.wsdl"), "text/xml");
+    const namespace = "urn:BSWebSericeIntf-IBSWebService";
+    const soapUrl = "https://soap.invalid/soap/IBSWebService";
+    const session = `{${objectId}}`;
+    const user = "EXAMPLE&<USER";
+    const client = harness({ fetch: async (url, init) => {
+      assert.equal(url, soapUrl);
+      assert.equal(init.method, "POST");
+      const envelope = new DOMParser().parseFromString(init.body, "text/xml");
+      if (soapMethod(init) === "GetSessionHandle") {
+        const action = Array.from(wsdl.getElementsByTagNameNS("http://schemas.xmlsoap.org/wsdl/soap/", "operation"))
+          .map((node) => node.getAttribute("soapAction")).find((value) => value.endsWith("#GetSessionHandle"));
+        assert.equal(init.headers.SOAPAction, `"${action}"`);
+        assert.equal(envelope.getElementsByTagNameNS(envelope.documentElement.namespaceURI, "Header").length, 1);
+        const [operation] = Array.from(envelope.getElementsByTagNameNS(namespace, "GetSessionHandle"));
+        const fields = Array.from(operation.childNodes).filter((node) => node.nodeType === 1);
+        const message = Array.from(wsdl.getElementsByTagNameNS("http://schemas.xmlsoap.org/wsdl/", "message"))
+          .find((node) => node.getAttribute("name") === "GetSessionHandle0Request");
+        const parts = Array.from(message.getElementsByTagNameNS("http://schemas.xmlsoap.org/wsdl/", "part"));
+        assert.deepEqual(fields.map((field) => [field.localName, field.getAttribute("xsi:type")]),
+          parts.map((part) => [part.getAttribute("name"), part.getAttribute("type").replace("xs:", "xsd:")]));
+        assert.deepEqual(fields.map((field) => field.textContent), ["0", "1", "2026", user, "", "", "", "false"]);
+        return new Response(soapEnvelope(`<NS1:GetSessionHandleResponse>
+          <NS1:return xsi:type="xsd:string"> &#123;<![CDATA[${objectId}]]>&#125; </NS1:return>
+        </NS1:GetSessionHandleResponse>`));
+      }
+      assert.equal(soapMethod(init), "GetItems");
+      assert.equal(envelope.getElementsByTagName("SessionHandle")[0].textContent, session);
+      return new Response(soapReply("GetItems", '<![CDATA[[{"name":"A &amp; B",]]>"amount":&#49;}]'));
+    } }).load("lib/biznisoft/soap-client.ts");
+    const sessionHandle = await client.getSessionHandle({ soapUrl, companyId: "1", companyYear: "2026", username: user, password: "" });
+    assert.equal(sessionHandle, session);
+    const data = await client.getItems({ soapUrl, sessionHandle, itemType: "itArticle", jsonGetItemsRequest: "{}" });
+    assert.deepEqual(JSON.parse(data), [{ name: "A &amp; B", amount: 1 }]);
+  });
+  await test("invalid SOAP login responses provide safe diagnostic reasons without accepting stray return tags", async () => {
+    const secret = "EXAMPLE_PRIVATE_BODY";
+    const credentials = { soapUrl: "https://soap.invalid/soap/IBSWebService", companyId: "1", companyYear: "2026", username: "EXAMPLE_USERNAME", password: "" };
+    const cases = [
+      [`<!doctype html><html><return>${secret}</return></html>`, "html_response"],
+      ['<definitions xmlns="http://schemas.xmlsoap.org/wsdl/"><message name="GetSessionHandle0Response"><part name="return"/></message></definitions>', "wsdl_response"],
+      [`<return>${secret}</return>`, "not_soap_envelope"],
+      [`<Envelope><Body>${secret}`, "malformed_xml"],
+      [`<!DOCTYPE Envelope SYSTEM "https://external.invalid/example">${soapEnvelope("<NS1:GetSessionHandleResponse/>").replace(/^<\?xml[^>]+\?>/, "")}`, "malformed_xml"],
+      [soapReply("GetItems", secret), "unexpected_soap_body"],
+      [soapEnvelope("<NS1:GetSessionHandleResponse/>"), "missing_return"],
+      [soapEnvelope('<NS1:GetSessionHandleResponse><return xsi:nil="true"/></NS1:GetSessionHandleResponse>'), "invalid_return"],
+      [soapEnvelope('<NS1:GetSessionHandleResponse><return/><return/></NS1:GetSessionHandleResponse>'), "invalid_return"],
+      [soapReply("GetSessionHandle", "  "), "invalid_session_handle"],
+      [soapReply("GetSessionHandle", secret), "invalid_session_handle"]
+    ];
+    for (const [xml, reason] of cases) {
+      const client = harness({ fetch: async () => new Response(xml) }).load("lib/biznisoft/soap-client.ts");
+      await assert.rejects(() => client.getSessionHandle(credentials), (error) => {
+        assert.equal(error.diagnostic.method, "GetSessionHandle");
+        assert.equal(error.diagnostic.httpStatus, 200);
+        assert.equal(error.diagnostic.kind, "invalid_response");
+        assert.equal(error.diagnostic.responseReason, reason);
+        assert.ok(!JSON.stringify([error.message, error.diagnostic]).includes(secret));
+        return true;
+      });
+    }
   });
   await test("optional tunnel Basic Auth covers all SOAP methods without changing login or requests", async () => {
     const env = { BIZNISOFT_TUNNEL_USERNAME: "EXAMPLE_TUNNEL_USER", BIZNISOFT_TUNNEL_PASSWORD: "EXAMPLE_TUNNEL_PASSWORD" };
@@ -622,7 +697,7 @@ async function main() {
       const requests = [];
       const client = harness({ env: settings, fetch: async (url, init) => {
         requests.push({ url, ...init });
-        return new Response(`<return>${requests.length === 1 ? session : "[]"}</return>`);
+        return new Response(soapReply(soapMethod(init), requests.length === 1 ? session : "[]"));
       } }).load("lib/biznisoft/soap-client.ts");
       const sessionHandle = await client.getSessionHandle(credentials);
       const common = { sessionHandle, soapUrl: credentials.soapUrl, itemType: "itArticle" };
@@ -657,10 +732,66 @@ async function main() {
         return true;
       });
     }
-    const fault = harness({ env, fetch: async () => new Response(`<Fault><faultstring>${authorization} ${env.BIZNISOFT_TUNNEL_PASSWORD}</faultstring></Fault>`, { status: 500 }) }).load("lib/biznisoft/soap-client.ts");
+    const fault = harness({ env, fetch: async () => new Response(soapFault(`${authorization} ${env.BIZNISOFT_TUNNEL_PASSWORD}`), { status: 500 }) }).load("lib/biznisoft/soap-client.ts");
     await assert.rejects(() => fault.getSessionHandle(credentials), (error) => !error.message.includes(env.BIZNISOFT_TUNNEL_PASSWORD) && !error.message.includes(authorization));
     const timeout = harness({ env, fetch: async () => { throw new DOMException("EXAMPLE_PRIVATE_DETAIL", "AbortError"); } }).load("lib/biznisoft/soap-client.ts");
     await assert.rejects(() => timeout.getSessionHandle(credentials), (error) => error.diagnostic.kind === "timeout" && !error.message.includes("EXAMPLE_PRIVATE_DETAIL"));
+  });
+  await test("Preview session diagnostic is isolated from Supabase and runs only one SOAP login", async () => {
+    const { unstable_doesMiddlewareMatch } = require("next/experimental/testing/server");
+    const url = "/api/diagnostics/biznisoft-session";
+    const route = "app" + url + "/route.ts";
+    const secret = "a".repeat(64);
+    const session = `{${objectId}}`;
+    const settings = {
+      VERCEL_ENV: "preview",
+      BIZNISOFT_SESSION_PROBE_SECRET: secret,
+      BIZNISOFT_SOAP_URL: "https://soap.invalid/soap/IBSWebService",
+      BIZNISOFT_TUNNEL_USERNAME: "EXAMPLE_TUNNEL_USER",
+      BIZNISOFT_TUNNEL_PASSWORD: "EXAMPLE_TUNNEL_PASSWORD",
+      BIZNISOFT_COMPANY_ID: "1",
+      BIZNISOFT_USERNAME: "EXAMPLE_SOAP_USER"
+    };
+    const config = harness().load("middleware.ts").config;
+    const matches = (path) => unstable_doesMiddlewareMatch({ config, nextConfig: {}, url: path });
+    assert.equal(matches(url), false);
+    assert.equal(matches(url + "/other"), true);
+    assert.equal(matches(url + "-other"), true);
+    assert.equal(matches("/api/admin/biznisoft/turnover"), true);
+    const call = (env, token, fetch) => harness({ env, fetch }).load(route).POST(new NextRequest("https://app.example" + url, {
+      method: "POST", headers: token ? { authorization: "Bearer " + token } : {}
+    }));
+    for (const [env, token, status] of [
+      [{ ...settings, VERCEL_ENV: "production" }, secret, 404],
+      [{ ...settings, VERCEL_ENV: undefined }, secret, 404],
+      [{ ...settings, BIZNISOFT_SESSION_PROBE_SECRET: "short" }, "short", 404],
+      [settings, undefined, 401],
+      [settings, "b".repeat(64), 401],
+      [{ ...settings, BIZNISOFT_TUNNEL_PASSWORD: undefined }, secret, 503],
+      [{ ...settings, BIZNISOFT_SOAP_URL: "https://soap.invalid/wsdl/IBSWebService" }, secret, 503],
+      [{ ...settings, BIZNISOFT_SOAP_URL: "http://soap.invalid/soap/IBSWebService" }, secret, 503]
+    ]) {
+      assert.equal((await call(env, token, failCall)).status, status);
+    }
+    let sent = 0;
+    const result = await call(settings, secret, async (soapUrl, init) => {
+      sent++;
+      assert.equal(soapUrl, settings.BIZNISOFT_SOAP_URL);
+      assert.equal(soapMethod(init), "GetSessionHandle");
+      assert.equal(init.headers.Authorization, "Basic " + Buffer.from("EXAMPLE_TUNNEL_USER:EXAMPLE_TUNNEL_PASSWORD").toString("base64"));
+      assert.ok(!init.body.includes(secret));
+      return new Response(soapReply("GetSessionHandle", session));
+    });
+    assert.equal(sent, 1);
+    assert.equal(result.status, 200);
+    assert.equal(result.headers.get("cache-control"), "private, no-store");
+    assert.deepEqual(await result.json(), { ok: true, method: "GetSessionHandle" });
+    const denied = await call(settings, secret, async () => new Response(session, { status: 401 }));
+    assert.deepEqual(await denied.json(), { ok: false, method: "GetSessionHandle", code: "http", httpStatus: 401 });
+    const unexpected = await call(settings, secret, async () => new Response("<html>" + session + "</html>"));
+    assert.deepEqual(await unexpected.json(), {
+      ok: false, method: "GetSessionHandle", code: "invalid_response", httpStatus: 200, responseReason: "html_response"
+    });
   });
   await test("discovery tunnel authentication protects WSDL and remaps advertised SOAP endpoint safely", async () => {
     let options, endpoint, security;
@@ -688,15 +819,15 @@ async function main() {
       [transportError({ code: "CERT_HAS_EXPIRED" }), "tls", "upstream_unavailable", "CERT_HAS_EXPIRED"],
       [transportError({ code: secret }), "network", "upstream_unavailable"],
       [async () => new Response(secret, { status: 503 }), "http", "upstream_unavailable", undefined, 503],
-      [async () => new Response(`<Fault><faultstring>${secret}</faultstring></Fault>`, { status: 500 }), "soap_fault", "upstream_unavailable", undefined, 500],
-      [async () => new Response(secret), "invalid_response", "invalid_response", undefined, 200]
+      [async () => new Response(soapFault(secret), { status: 500 }), "soap_fault", "upstream_unavailable", undefined, 500],
+      [async () => new Response(`<html>${secret}</html>`), "invalid_response", "invalid_response", undefined, 200, "html_response"]
     ];
     const path = "app/api/admin/biznisoft/turnover/route.ts";
     const date = "2026-01-01";
     for (const [profile, status] of [[null, 401], [worker, 403]]) {
       assert.equal((await harness({ profile }).load(path).GET(request("GET", undefined, `?date=${date}`))).status, status);
     }
-    for (const [fetch, kind, code, transportCode, httpStatus] of cases) {
+    for (const [fetch, kind, code, transportCode, httpStatus, responseReason] of cases) {
       const logs = [];
       const service = database(({ table }) => ({ data: table === "stores" ? stores : null }));
       service.rpc = async () => ({ data: "EXAMPLE_LEASE_TOKEN" });
@@ -718,6 +849,7 @@ async function main() {
       assert.equal(diagnostic.kind, kind);
       assert.equal(diagnostic.transportCode, transportCode);
       assert.equal(diagnostic.httpStatus, httpStatus);
+      assert.equal(diagnostic.responseReason, responseReason);
       assert.equal(typeof diagnostic.durationMs, "number");
       assert.ok(!JSON.stringify([logs, body]).includes(secret));
       assert.ok(!JSON.stringify([logs, body]).includes("soap.invalid"));
@@ -738,9 +870,9 @@ async function main() {
     const fixture = harness({ profile: admin, service, console: { error: (...args) => logs.push(args) }, env: {
       BIZNISOFT_SOAP_URL: "https://soap.invalid", BIZNISOFT_COMPANY_ID: "1", BIZNISOFT_USERNAME: "EXAMPLE_USERNAME"
     }, fetch: async (_, init) => {
-      if (init.headers.SOAPAction.endsWith("#GetSessionHandle")) return new Response(`<return>${session}</return>`);
+      if (soapMethod(init) === "GetSessionHandle") return new Response(soapReply("GetSessionHandle", session));
       assert.match(init.body, /itOperater_Sale_Report/);
-      return new Response(`<Fault><faultstring>EXAMPLE_PRIVATE_FAULT ${session}</faultstring></Fault>`, { status: 500 });
+      return new Response(soapFault(`EXAMPLE_PRIVATE_FAULT ${session}`), { status: 500 });
     } });
     const stores = fixture.load("lib/produce.ts").PRODUCE_STORE_NAMES.map((name, index) => ({
       id: `store-${index}`, name, biznisoft_storage_id: index === 0 ? 1 : null

@@ -250,6 +250,39 @@ rejected before SOAP login; inspect safe server diagnostics, never SOAP bodies o
 Authorization headers. Do not run a synchronization merely to test connectivity,
 because it writes application data.
 
+If turnover reports `invalid_response`, check `soap.responseReason` in the
+server log. `wsdl_response` means the POST received service definitions instead
+of a SOAP reply; confirm the endpoint is `/soap/IBSWebService`, not
+`/wsdl/IBSWebService`. `html_response` means an intermediary or service returned
+a web page. `missing_return`, `invalid_return` and `invalid_session_handle`
+distinguish an absent, unusable or non-session login result. The diagnostic
+records the method and HTTP status, not the response XML or credentials.
+
+### GetSessionHandle-only Preview test
+
+Use a separately approved Preview deployment. Keep automatic Git deployments
+disabled on the review branch. In the intended project's branch-scoped Preview
+variables, set the SOAP URL and BizniSoft login variables, both tunnel Basic Auth
+variables, and a temporary sensitive `BIZNISOFT_SESSION_PROBE_SECRET` (32 random
+bytes as 64 lowercase hex characters). The route requires Vercel's system
+`VERCEL_ENV=preview`; it is disabled in Production and without the secret.
+
+From PowerShell 7, call the Preview URL directly; do not open the dashboard or
+run any sync. Enter the **probe** secret at the hidden prompt, not either password:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri 'https://your-preview.vercel.app/api/diagnostics/biznisoft-session' -Authentication Bearer -Token (Read-Host 'Probe secret' -AsSecureString) -MaximumRedirection 0
+```
+
+Expected: `ok: true`, `method: GetSessionHandle`. The route sends one SOAP
+request, does not contact Supabase or fetch turnover, and never returns the
+session handle. A probe authorization failure is HTTP 401; an upstream 401 is
+instead reported as HTTP 502 with `code: http` and `httpStatus: 401`. Keep Vercel
+Deployment Protection in place. After verification, take the temporary Preview
+deployment offline and remove the probe secret; removing the variable alone
+does not change an existing deployment. Do not proceed to turnover refresh
+until the probe passes.
+
 ## Obaveštenja za zadatke
 
 Za opciju **Pošalji notifikaciju na telefon** potrebna je migracija
