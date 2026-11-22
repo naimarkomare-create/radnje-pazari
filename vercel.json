@@ -1,4 +1,9 @@
 {
+  "git": {
+    "deploymentEnabled": {
+      "codex/biznisoft-soap-login-fix": false
+    }
+  },
   "crons": [
     {
       "path": "/api/cron/biznisoft-stock-price-sync",

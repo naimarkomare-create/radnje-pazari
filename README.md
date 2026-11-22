@@ -250,6 +250,14 @@ rejected before SOAP login; inspect safe server diagnostics, never SOAP bodies o
 Authorization headers. Do not run a synchronization merely to test connectivity,
 because it writes application data.
 
+If turnover reports `invalid_response`, check `soap.responseReason` in the
+server log. `wsdl_response` means the POST received service definitions instead
+of a SOAP reply; confirm the endpoint is `/soap/IBSWebService`, not
+`/wsdl/IBSWebService`. `html_response` means an intermediary or service returned
+a web page. `missing_return`, `invalid_return` and `invalid_session_handle`
+distinguish an absent, unusable or non-session login result. The diagnostic
+records the method and HTTP status, not the response XML or credentials.
+
 ## Obaveštenja za zadatke
 
 Za opciju **Pošalji notifikaciju na telefon** potrebna je migracija
